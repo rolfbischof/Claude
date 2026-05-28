@@ -43,22 +43,38 @@ document.querySelectorAll('[data-animate], .advantage, .testimonial').forEach((e
   observer.observe(el);
 });
 
-// Contact form submission
+// Contact form – AJAX submission to ajax/contact.php
 const form = document.getElementById('contact-form');
 const formSuccess = document.getElementById('form-success');
+const formError   = document.getElementById('form-error');
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const btn = form.querySelector('button[type="submit"]');
-  btn.textContent = 'Wird gesendet...';
-  btn.disabled = true;
+if (form) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button[type="submit"]');
+    const orig = btn.textContent;
+    btn.textContent = 'Wird gesendet...';
+    btn.disabled = true;
+    if (formError) formError.hidden = true;
 
-  // Simulate async submission
-  setTimeout(() => {
-    form.hidden = true;
-    formSuccess.hidden = false;
-  }, 800);
-});
+    try {
+      const res  = await fetch('/ajax/contact.php', { method: 'POST', body: new FormData(form) });
+      const data = await res.json();
+      if (data.ok) {
+        form.hidden = true;
+        if (formSuccess) formSuccess.hidden = false;
+      } else {
+        if (formError) { formError.textContent = data.msg || 'Fehler beim Senden.'; formError.hidden = false; }
+        btn.textContent = orig;
+        btn.disabled = false;
+      }
+    } catch {
+      if (formError) { formError.textContent = 'Verbindungsfehler. Bitte versuchen Sie es erneut.'; formError.hidden = false; }
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  });
+}
 
 // Smooth active nav link highlighting
 const sections = document.querySelectorAll('section[id]');
