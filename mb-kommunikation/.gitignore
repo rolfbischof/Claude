@@ -1,0 +1,25 @@
+# Sensitive configuration
+config/config.php
+
+# Uploads (user content – track separately or with Git LFS)
+uploads/
+
+# Backup files
+backup/files/
+
+# Log files
+logs/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PHP temp
+/tmp/
+
+# Node (if added later for CSS build)
+node_modules/
