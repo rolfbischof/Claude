@@ -1,167 +1,165 @@
 <?php
 /**
- * mb Kommunikation + Events – Admin AJAX File Upload Handler
- * Returns JSON: {success: true, url: '...', filename: '...'}
+ * mb Kommunikation + Events
+ * AJAX file upload handler – returns JSON only, no HTML layout.
+ *
+ * Accepted:  POST multipart/form-data
+ *   file        – the uploaded image file (required)
+ *   csrf_token  – CSRF token from the session
+ *   type        – context hint: 'events' | 'references' | 'pages' | anything else → 'general'
+ *
+ * Response JSON (success):
+ *   {"success": true, "url": "/uploads/events/abc123.jpg", "filename": "abc123.jpg"}
+ *
+ * Response JSON (error):
+ *   {"success": false, "error": "human-readable error message"}
  */
 
 declare(strict_types=1);
 
 require_once '../includes/db.php';
 require_once '../includes/auth.php';
-require_once '../includes/functions.php';
 
-// Always return JSON
+// ── Always respond with JSON ──────────────────────────────────────────────────
 header('Content-Type: application/json; charset=utf-8');
 
-// Only allow POST
+// ── Inline helper so we do not need functions.php ─────────────────────────────
+function uploadJsonOut(array $payload, int $httpStatus = 200): never
+{
+    http_response_code($httpStatus);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ── Only handle POST ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Nur POST erlaubt.']);
-    exit;
+    uploadJsonOut(['success' => false, 'error' => 'Nur POST-Anfragen sind erlaubt.'], 405);
 }
 
-// Require editor+ role
-$auth->requireLogin('/login.php');
+// ── Role check: editor+ required ─────────────────────────────────────────────
+// requireRole() redirects on failure; we need JSON. Use hasRole() directly.
+if (!$auth->isLoggedIn()) {
+    uploadJsonOut(['success' => false, 'error' => 'Nicht angemeldet.'], 401);
+}
 if (!$auth->hasRole('editor')) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'error' => 'Keine Berechtigung.']);
-    exit;
+    uploadJsonOut(['success' => false, 'error' => 'Zugriff verweigert. Mindestrolle: editor.'], 403);
 }
 
-// Verify CSRF
-$token = $_POST['csrf_token'] ?? '';
-if (!$auth->verifyCsrfToken($token)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'error' => 'Ungültiger CSRF-Token.']);
-    exit;
+// ── CSRF check ────────────────────────────────────────────────────────────────
+// Accept token from POST field or X-CSRF-Token header (for fetch() callers).
+$submittedToken = $_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+if (!$auth->validateCsrfToken($submittedToken)) {
+    uploadJsonOut(['success' => false, 'error' => 'Ungültiges Sicherheitstoken (CSRF).'], 403);
 }
 
-// Check file upload exists
-if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-    $uploadErrors = [
-        UPLOAD_ERR_INI_SIZE   => 'Datei zu gross (server limit).',
-        UPLOAD_ERR_FORM_SIZE  => 'Datei zu gross (form limit).',
-        UPLOAD_ERR_PARTIAL    => 'Datei wurde nur teilweise hochgeladen.',
-        UPLOAD_ERR_NO_FILE    => 'Keine Datei empfangen.',
-        UPLOAD_ERR_NO_TMP_DIR => 'Temporäres Verzeichnis fehlt.',
-        UPLOAD_ERR_CANT_WRITE => 'Datei konnte nicht geschrieben werden.',
-        UPLOAD_ERR_EXTENSION  => 'Upload durch PHP-Erweiterung blockiert.',
-    ];
-    $errCode = $_FILES['file']['error'] ?? UPLOAD_ERR_NO_FILE;
-    $errMsg  = $uploadErrors[$errCode] ?? 'Upload-Fehler (Code '.$errCode.').';
-    echo json_encode(['success' => false, 'error' => $errMsg]);
-    exit;
+// ── Verify a file was submitted ───────────────────────────────────────────────
+if (!isset($_FILES['file'])) {
+    uploadJsonOut(['success' => false, 'error' => 'Kein Datei-Feld im Request vorhanden.'], 400);
 }
 
 $file = $_FILES['file'];
 
-// ── Validate MIME type via finfo (not just the browser-reported type) ──────
-$finfo    = new finfo(FILEINFO_MIME_TYPE);
-$mimeType = $finfo->file($file['tmp_name']);
+// ── PHP upload error codes ────────────────────────────────────────────────────
+if ($file['error'] !== UPLOAD_ERR_OK) {
+    $phpErrors = [
+        UPLOAD_ERR_INI_SIZE   => 'Die Datei überschreitet das PHP-Serverlimit (upload_max_filesize).',
+        UPLOAD_ERR_FORM_SIZE  => 'Die Datei überschreitet das Formularlimit (MAX_FILE_SIZE).',
+        UPLOAD_ERR_PARTIAL    => 'Die Datei wurde nur teilweise hochgeladen.',
+        UPLOAD_ERR_NO_FILE    => 'Es wurde keine Datei ausgewählt.',
+        UPLOAD_ERR_NO_TMP_DIR => 'Kein temporäres Verzeichnis auf dem Server vorhanden.',
+        UPLOAD_ERR_CANT_WRITE => 'Die Datei konnte nicht auf den Server geschrieben werden.',
+        UPLOAD_ERR_EXTENSION  => 'Der Upload wurde durch eine PHP-Erweiterung abgebrochen.',
+    ];
+    $errMsg = $phpErrors[$file['error']] ?? 'Unbekannter Upload-Fehler (Code ' . $file['error'] . ').';
+    uploadJsonOut(['success' => false, 'error' => $errMsg], 400);
+}
 
-$allowedMimes = [
+// ── Size check ────────────────────────────────────────────────────────────────
+if ($file['size'] > MAX_UPLOAD_SIZE) {
+    uploadJsonOut([
+        'success' => false,
+        'error'   => 'Die Datei ist zu gross. Maximal erlaubt: ' . MAX_UPLOAD_SIZE_LABEL . '.',
+    ], 413);
+}
+
+if ($file['size'] === 0) {
+    uploadJsonOut(['success' => false, 'error' => 'Die hochgeladene Datei ist leer.'], 400);
+}
+
+// ── MIME type validation (inspects file content via libmagic, not HTTP header) ─
+$allowedMimeTypes = [
     'image/jpeg' => 'jpg',
-    'image/jpg'  => 'jpg',
     'image/png'  => 'png',
     'image/gif'  => 'gif',
     'image/webp' => 'webp',
-    'image/svg+xml' => 'svg',
 ];
 
-if (!array_key_exists($mimeType, $allowedMimes)) {
-    echo json_encode([
+$finfo    = new finfo(FILEINFO_MIME_TYPE);
+$mimeType = $finfo->file($file['tmp_name']);
+
+if ($mimeType === false || !array_key_exists($mimeType, $allowedMimeTypes)) {
+    uploadJsonOut([
         'success' => false,
-        'error'   => 'Ungültiger Dateityp: ' . $mimeType . '. Erlaubt: JPG, PNG, GIF, WebP, SVG.',
-    ]);
-    exit;
+        'error'   => 'Ungültiger Dateityp. Erlaubt: JPEG, PNG, GIF, WebP.',
+    ], 415);
 }
 
-// ── Validate file extension ────────────────────────────────────────────────
-$originalName = $file['name'];
-$ext          = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-$allowedExts  = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+// Derive extension from the detected MIME type (ignore client-supplied filename)
+$extension = $allowedMimeTypes[$mimeType];
 
-if (!in_array($ext, $allowedExts)) {
-    echo json_encode([
-        'success' => false,
-        'error'   => 'Ungültige Dateiendung. Erlaubt: ' . implode(', ', $allowedExts) . '.',
-    ]);
-    exit;
+// ── Additional image integrity check (getimagesize reads image headers) ───────
+if (@getimagesize($file['tmp_name']) === false) {
+    uploadJsonOut(['success' => false, 'error' => 'Die Datei ist keine gültige Bilddatei.'], 415);
 }
 
-// Use extension derived from MIME (safer than user-provided)
-$safeExt = $allowedMimes[$mimeType];
+// ── Determine upload sub-directory ───────────────────────────────────────────
+$allowedSubdirs = ['events', 'references', 'pages'];
+$requestedType  = trim($_POST['type'] ?? '');
+$subdir         = in_array($requestedType, $allowedSubdirs, true) ? $requestedType : 'general';
 
-// ── Validate file size ────────────────────────────────────────────────────
-if ($file['size'] > MAX_UPLOAD_SIZE) {
-    echo json_encode([
-        'success' => false,
-        'error'   => 'Datei zu gross. Maximum: ' . MAX_UPLOAD_SIZE_LABEL . '.',
-    ]);
-    exit;
-}
+// ── Build destination path ────────────────────────────────────────────────────
+$destDir = rtrim(UPLOAD_PATH, '/') . '/' . $subdir . '/';
 
-// ── Determine upload subdirectory ─────────────────────────────────────────
-$typeMap = [
-    'events'     => 'events',
-    'references' => 'references',
-    'pages'      => 'pages',
-    'general'    => 'general',
-];
-$requestedType = $_POST['type'] ?? 'general';
-$subDir        = $typeMap[$requestedType] ?? 'general';
-
-$uploadDir = UPLOAD_PATH . $subDir . '/';
-if (!is_dir($uploadDir)) {
-    if (!@mkdir($uploadDir, 0755, true)) {
-        echo json_encode(['success' => false, 'error' => 'Upload-Verzeichnis konnte nicht erstellt werden.']);
-        exit;
+if (!is_dir($destDir)) {
+    if (!@mkdir($destDir, 0755, true)) {
+        error_log('[upload.php] mkdir failed: ' . $destDir);
+        uploadJsonOut(['success' => false, 'error' => 'Upload-Verzeichnis konnte nicht erstellt werden.'], 500);
     }
 }
 
-// ── Generate unique safe filename ─────────────────────────────────────────
-$baseName    = pathinfo($originalName, PATHINFO_FILENAME);
-$safeBase    = preg_replace('/[^a-z0-9_-]/', '-', strtolower($baseName));
-$safeBase    = preg_replace('/-+/', '-', trim($safeBase, '-'));
-$safeBase    = $safeBase ?: 'upload';
-$uniqueSlug  = substr($safeBase, 0, 40) . '_' . bin2hex(random_bytes(4));
-$filename    = $uniqueSlug . '.' . $safeExt;
-$destination = $uploadDir . $filename;
+// ── Generate a unique filename using uniqid() ─────────────────────────────────
+$filename = uniqid('', true) . '.' . $extension;
+$destPath = $destDir . $filename;
 
-// ── Additional security: validate image content (except SVG) ──────────────
-if ($mimeType !== 'image/svg+xml') {
-    $imgInfo = @getimagesize($file['tmp_name']);
-    if ($imgInfo === false) {
-        echo json_encode(['success' => false, 'error' => 'Ungültige Bilddatei.']);
-        exit;
-    }
+// Guard against the extremely unlikely collision
+$attempts = 0;
+while (file_exists($destPath) && $attempts < 10) {
+    $filename = uniqid('', true) . '.' . $extension;
+    $destPath = $destDir . $filename;
+    $attempts++;
 }
 
-// SVG: strip potentially dangerous content
-if ($mimeType === 'image/svg+xml') {
-    $svgContent = file_get_contents($file['tmp_name']);
-    // Remove script tags and event attributes
-    $svgContent = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $svgContent);
-    $svgContent = preg_replace('/\bon\w+\s*=/i', 'data-removed=', $svgContent);
-    if (file_put_contents($destination, $svgContent) === false) {
-        echo json_encode(['success' => false, 'error' => 'SVG konnte nicht gespeichert werden.']);
-        exit;
-    }
-} else {
-    // Move uploaded file
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
-        echo json_encode(['success' => false, 'error' => 'Datei konnte nicht gespeichert werden.']);
-        exit;
-    }
+// ── Move the temp file to its permanent location ──────────────────────────────
+if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+    error_log('[upload.php] move_uploaded_file failed: tmp=' . $file['tmp_name'] . ' dest=' . $destPath);
+    uploadJsonOut(['success' => false, 'error' => 'Die Datei konnte nicht gespeichert werden.'], 500);
 }
 
-// ── Build public URL ──────────────────────────────────────────────────────
-$url = UPLOAD_URL . $subDir . '/' . $filename;
+// ── Set restrictive file permissions ─────────────────────────────────────────
+@chmod($destPath, 0644);
 
-echo json_encode([
+// ── Build root-relative public URL ───────────────────────────────────────────
+// Use a root-relative path (not SITE_URL-based) so it works on HTTP and HTTPS alike.
+$publicUrl = '/uploads/' . $subdir . '/' . $filename;
+
+// ── Rotate CSRF token for the next request ───────────────────────────────────
+// generateCsrfToken / getCsrfToken will produce a fresh token stored in the session.
+// The calling page should refresh its token from the response or a subsequent request.
+// (Auth::validateCsrfToken does not auto-rotate; rotation happens on requireCsrf/verifyCsrf.)
+
+// ── Success response ──────────────────────────────────────────────────────────
+uploadJsonOut([
     'success'  => true,
-    'url'      => $url,
+    'url'      => $publicUrl,
     'filename' => $filename,
-    'size'     => $file['size'],
-    'type'     => $mimeType,
 ]);
