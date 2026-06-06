@@ -2,11 +2,15 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Pacman</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; display:flex; flex-direction:column; align-items:center; padding:10px; font-family:'Courier New',monospace; color:#fff; }
-h1 { color:#FFD700; font-size:26px; letter-spacing:6px; text-shadow:0 0 12px #FFD700; margin-bottom:6px; }
+html,body { background:#000; width:100%; height:100%; overflow:hidden; touch-action:none; }
+body { display:flex; justify-content:center; align-items:flex-start; font-family:'Courier New',monospace; color:#fff; }
+#gc { display:flex; flex-direction:column; align-items:center; transform-origin:top center; padding:8px 0; }
+h1 { color:#FFD700; font-size:26px; letter-spacing:6px; text-shadow:0 0 12px #FFD700; margin-bottom:5px; }
 #hud { display:flex; justify-content:space-between; width:560px; margin-bottom:4px; font-size:14px; }
 #wrap { position:relative; border:3px solid #1a1aff; box-shadow:0 0 20px #1a1aff,0 0 50px #0000aa; }
 canvas { display:block; }
@@ -14,11 +18,18 @@ canvas { display:block; }
 #ov h2 { font-size:22px; color:#FFD700; text-shadow:0 0 10px #FFD700; margin-bottom:16px; }
 #ov p { font-size:11px; color:#aaa; line-height:2; text-align:center; margin-bottom:18px; }
 #ov .big { font-size:16px; color:#FFD700; margin-bottom:8px; }
-button { background:#FFD700; color:#000; border:none; padding:12px 32px; font-size:14px; font-family:inherit; cursor:pointer; letter-spacing:3px; border-radius:3px; }
-button:hover { background:#fff; box-shadow:0 0 16px #FFD700; }
+.ov-btn { background:#FFD700; color:#000; border:none; padding:12px 32px; font-size:14px; font-family:inherit; cursor:pointer; letter-spacing:3px; border-radius:3px; touch-action:manipulation; }
+.ov-btn:active { background:#fff; }
+/* D-pad */
+#dpad { display:grid; grid-template-areas:'. u .' 'l m r' '. d .'; grid-template-columns:76px 76px 76px; grid-template-rows:76px 40px 76px; gap:6px; margin-top:14px; user-select:none; -webkit-user-select:none; }
+#dpad-u { grid-area:u; } #dpad-d { grid-area:d; } #dpad-l { grid-area:l; } #dpad-r { grid-area:r; }
+#dpad-m { grid-area:m; background:rgba(255,215,0,.05); border-radius:8px; }
+.dp { width:76px; height:76px; background:rgba(255,215,0,.12); border:2.5px solid rgba(255,215,0,.5); color:#FFD700; font-size:30px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:background .1s; }
+.dp:active, .dp.on { background:rgba(255,215,0,.38); border-color:#FFD700; }
 </style>
 </head>
 <body>
+<div id="gc">
 <h1>PAC-MAN</h1>
 <div id="hud">
   <span style="color:#FFD700">SCORE: <span id="sc">0</span></span>
@@ -29,12 +40,22 @@ button:hover { background:#fff; box-shadow:0 0 16px #FFD700; }
   <canvas id="c" width="560" height="620"></canvas>
   <div id="ov">
     <h2>PAC-MAN</h2>
-    <p>Steuerung: <b style="color:#FFD700">Pfeiltasten</b> oder <b style="color:#FFD700">WASD</b><br>
-       Pause: ESC &nbsp;|&nbsp; Neustart: R</p>
+    <p>Keyboard: <b style="color:#FFD700">Pfeiltasten / WASD</b><br>
+       iPad: <b style="color:#FFD700">Wischen</b> oder <b style="color:#FFD700">D-Pad</b> unten<br>
+       Pause: ESC</p>
     <p>Fresse alle Punkte auf!<br>Weisse Grosspunkte = Geister fressbar</p>
-    <button onclick="startGame()">SPIELEN</button>
+    <button class="ov-btn" onclick="startGame()">SPIELEN</button>
   </div>
 </div>
+<!-- D-Pad for touch -->
+<div id="dpad">
+  <div id="dpad-u" class="dp">▲</div>
+  <div id="dpad-m"></div>
+  <div id="dpad-l" class="dp">◀</div>
+  <div id="dpad-d" class="dp">▼</div>
+  <div id="dpad-r" class="dp">▶</div>
+</div>
+</div><!-- #gc -->
 
 <script>
 const C = document.getElementById('c');
@@ -391,7 +412,7 @@ function gameOver(){
   ov.innerHTML=`<h2>GAME OVER</h2>
     <p class="big">PUNKTE: ${player.score}</p>
     <p>Level erreicht: ${level}</p>
-    <button onclick="startGame()" style="margin-top:14px">NOCHMAL</button>`;
+    <button class="ov-btn" onclick="startGame()" style="margin-top:14px">NOCHMAL</button>`;
   ov.style.display='flex';
 }
 
@@ -565,6 +586,53 @@ function drawFloaters(){
   }
   ctx.textAlign='left';
 }
+
+// ---- touch / D-pad ----
+(function(){
+  // D-pad buttons
+  const dirMap = {
+    'dpad-u': {x:0,y:-1}, 'dpad-d': {x:0,y:1},
+    'dpad-l': {x:-1,y:0}, 'dpad-r': {x:1,y:0}
+  };
+  Object.entries(dirMap).forEach(([id,dir])=>{
+    const el=document.getElementById(id);
+    const apply=e=>{ e.preventDefault(); if(player) player.want={...dir}; el.classList.add('on'); };
+    const release=e=>{ e.preventDefault(); el.classList.remove('on'); };
+    el.addEventListener('touchstart',apply,{passive:false});
+    el.addEventListener('touchend',release,{passive:false});
+    el.addEventListener('mousedown',apply);
+    el.addEventListener('mouseup',release);
+  });
+
+  // Swipe on canvas
+  let sx,sy;
+  C.addEventListener('touchstart',e=>{ sx=e.touches[0].clientX; sy=e.touches[0].clientY; e.preventDefault(); },{passive:false});
+  C.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+  C.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)<15&&Math.abs(dy)<15) return;
+    if(!player) return;
+    player.want=Math.abs(dx)>Math.abs(dy)
+      ? {x:dx>0?1:-1,y:0}
+      : {x:0,y:dy>0?1:-1};
+    e.preventDefault();
+  },{passive:false});
+})();
+
+// ---- responsive scaling ----
+function rescale(){
+  const gc=document.getElementById('gc');
+  // total content height: title(36)+hud(24)+canvas(626)+dpad(174)+gaps(~50)
+  const W=560, H=36+24+626+174+60;
+  const s=Math.min((window.innerWidth-10)/W, (window.innerHeight-6)/H, 1);
+  gc.style.transform=`scale(${s})`;
+  // collapse dead space so body doesn't scroll
+  gc.style.marginBottom=`${-(1-s)*H}px`;
+  document.body.style.height=`${s*H}px`;
+}
+window.addEventListener('resize',rescale);
+window.addEventListener('orientationchange',()=>setTimeout(rescale,200));
+rescale();
 
 // initial render
 initMap(); player=mkPlayer(); ghosts=mkGhosts(); render();
