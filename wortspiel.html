@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Wortkategorien</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --yellow: #f9df6d;
+    --green: #a0c35a;
+    --blue: #b0c4ef;
+    --purple: #ba81c5;
+    --bg: #f8f6f0;
+    --card-bg: #ffffff;
+    --text: #1a1a1a;
+    --border: #d0ccc0;
+    --shadow: rgba(0,0,0,0.12);
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: #666;
+    font-size: 0.95rem;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .screen { width: 100%; max-width: 520px; display: none; flex-direction: column; align-items: center; }
+  .screen.active { display: flex; }
+
+  .level-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    margin: 16px 0;
+  }
+
+  .level-card {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .level-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+  }
+  .level-card[data-level="1"]::before { background: var(--yellow); }
+  .level-card[data-level="2"]::before { background: var(--green); }
+  .level-card[data-level="3"]::before { background: var(--blue); }
+  .level-card[data-level="4"]::before { background: var(--purple); }
+  .level-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px var(--shadow); border-color: #aaa; }
+  .level-card:active { transform: translateY(0); }
+  .level-card .level-num { font-size: 1.6rem; font-weight: 900; }
+  .level-card .level-name { font-size: 0.85rem; font-weight: 600; margin: 4px 0 2px; color: #444; }
+  .level-card .level-stars { font-size: 1.1rem; letter-spacing: 2px; color: #f0b800; min-height: 1.3rem; }
+  .level-card .level-diff { font-size: 0.75rem; color: #888; }
+
+  .how-to {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .how-to h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 8px; color: #444; }
+  .how-to p { font-size: 0.82rem; color: #666; line-height: 1.5; }
+
+  .game-header {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .level-badge {
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: #333;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .lives { display: flex; gap: 6px; align-items: center; }
+  .life { font-size: 1.2rem; transition: all 0.3s; }
+  .life.lost { opacity: 0.2; transform: scale(0.7); }
+
+  .game-msg {
+    height: 22px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    color: #c00;
+    width: 100%;
+    max-width: 520px;
+    margin-bottom: 4px;
+  }
+
+  .found-categories {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .found-row {
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.4s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
+  .found-row .cat-title { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+  .found-row .cat-words { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
+
+  .word-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    width: 100%;
+    max-width: 520px;
+    margin-bottom: 10px;
+  }
+
+  .word-tile {
+    background: var(--card-bg);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 4px;
+    font-size: clamp(0.7rem, 2.5vw, 0.85rem);
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+    word-break: break-word;
+    hyphens: auto;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .word-tile:hover { border-color: #888; transform: scale(1.03); }
+  .word-tile:active { transform: scale(0.97); }
+  .word-tile.selected {
+    background: #333;
+    color: white;
+    border-color: #333;
+    transform: scale(1.05);
+  }
+  .word-tile.shake { animation: shake 0.45s ease; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    15%  { transform: translateX(-7px); }
+    30%  { transform: translateX(7px); }
+    45%  { transform: translateX(-5px); }
+    60%  { transform: translateX(5px); }
+    75%  { transform: translateX(-3px); }
+    90%  { transform: translateX(3px); }
+  }
+  .word-tile.bounce { animation: bounce 0.5s ease; }
+  @keyframes bounce {
+    0%   { transform: scale(1); }
+    30%  { transform: scale(1.2); }
+    60%  { transform: scale(0.9); }
+    80%  { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 520px;
+    margin-bottom: 10px;
+  }
+  button {
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    padding: 11px 16px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .btn-shuffle { background: #e8e4dc; color: #333; flex: 1; }
+  .btn-deselect { background: #e8e4dc; color: #333; flex: 1; }
+  .btn-submit { background: #333; color: white; flex: 2; }
+  .btn-submit:hover:not(:disabled) { background: #111; }
+  .btn-back { background: #e8e4dc; color: #333; padding: 8px 14px; font-size: 0.8rem; }
+  .btn-primary { background: #333; color: white; padding: 13px 32px; font-size: 1rem; margin-top: 8px; }
+  .btn-primary:hover { background: #111; }
+
+  #win-screen, #lose-screen { text-align: center; gap: 12px; }
+  .result-emoji { font-size: 4rem; }
+  .result-title { font-size: 1.6rem; font-weight: 800; }
+  .result-sub { color: #666; font-size: 0.92rem; }
+
+  .solution-reveal {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 12px 0;
+  }
+  .sol-row { border-radius: 10px; padding: 10px 14px; }
+  .sol-row .cat-title { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+  .sol-row .cat-words { font-size: 0.82rem; font-weight: 600; margin-top: 2px; }
+  .result-btn-row { display: flex; gap: 10px; }
+
+  #confetti-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  .cat-yellow { background: var(--yellow); }
+  .cat-green  { background: var(--green);  }
+  .cat-blue   { background: var(--blue);   }
+  .cat-purple { background: var(--purple); }
+
+  .hint-bar {
+    height: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #555;
+    text-align: center;
+    width: 100%;
+    max-width: 520px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="confetti-canvas"></canvas>
+
+<div id="start-screen" class="screen active">
+  <h1>Wortkategorien</h1>
+  <p class="subtitle">Finde die vier verborgenen Gruppen!</p>
+
+  <div class="level-grid">
+    <div class="level-card" data-level="1" onclick="startLevel(1)">
+      <div class="level-num">1</div>
+      <div class="level-name">Anfänger</div>
+      <div class="level-stars" id="stars-1"></div>
+      <div class="level-diff">Einfach</div>
+    </div>
+    <div class="level-card" data-level="2" onclick="startLevel(2)">
+      <div class="level-num">2</div>
+      <div class="level-name">Leicht</div>
+      <div class="level-stars" id="stars-2"></div>
+      <div class="level-diff">Leichter Einstieg</div>
+    </div>
+    <div class="level-card" data-level="3" onclick="startLevel(3)">
+      <div class="level-num">3</div>
+      <div class="level-name">Mittel</div>
+      <div class="level-stars" id="stars-3"></div>
+      <div class="level-diff">Etwas kniffliger</div>
+    </div>
+    <div class="level-card" data-level="4" onclick="startLevel(4)">
+      <div class="level-num">4</div>
+      <div class="level-name">Experte</div>
+      <div class="level-stars" id="stars-4"></div>
+      <div class="level-diff">Sehr schwer</div>
+    </div>
+  </div>
+
+  <div class="how-to">
+    <h3>Wie spielt man?</h3>
+    <p>Wähle <strong>vier Wörter</strong>, die zur selben Kategorie gehören, und tippe auf <em>Prüfen</em>. Du hast <strong>4 Leben</strong>. Gelb ist am einfachsten, Lila am schwierigsten. Vorsicht – manche Wörter scheinen in mehrere Gruppen zu passen!</p>
+  </div>
+</div>
+
+<div id="game-screen" class="screen">
+  <div class="game-header">
+    <button class="btn-back" onclick="goHome()">← Menü</button>
+    <div class="level-badge" id="game-level-badge">Level 1</div>
+    <div class="lives" id="lives-display"></div>
+  </div>
+  <div class="game-msg" id="game-msg"></div>
+  <div class="hint-bar" id="hint-bar"></div>
+  <div class="found-categories" id="found-categories"></div>
+  <div class="word-grid" id="word-grid"></div>
+  <div class="btn-row">
+    <button class="btn-shuffle" onclick="shuffleWords()">🔀 Mischen</button>
+    <button class="btn-deselect" onclick="deselectAll()">✕ Abwählen</button>
+    <button class="btn-submit" id="btn-submit" onclick="submitGuess()" disabled>Prüfen</button>
+  </div>
+</div>
+
+<div id="win-screen" class="screen">
+  <div class="result-emoji">🎉</div>
+  <div class="result-title">Ausgezeichnet!</div>
+  <div class="result-sub" id="win-sub"></div>
+  <div class="solution-reveal" id="win-solution"></div>
+  <div class="result-btn-row">
+    <button class="btn-primary" onclick="goHome()">🏠 Menü</button>
+    <button class="btn-primary" id="btn-next-level" onclick="nextLevel()">Nächstes Level →</button>
+  </div>
+</div>
+
+<div id="lose-screen" class="screen">
+  <div class="result-emoji">😔</div>
+  <div class="result-title">Nicht geschafft!</div>
+  <div class="result-sub">Die gesuchten Kategorien waren:</div>
+  <div class="solution-reveal" id="lose-solution"></div>
+  <div class="result-btn-row">
+    <button class="btn-primary" onclick="goHome()">🏠 Menü</button>
+    <button class="btn-primary" onclick="retryLevel()">🔄 Nochmal</button>
+  </div>
+</div>
+
+<script>
+const LEVELS = [
+  {
+    id: 1,
+    name: "Anfänger",
+    categories: [
+      { name: "Haustiere",  color: "yellow", words: ["HUND", "KATZE", "HAMSTER", "WELLENSITTICH"] },
+      { name: "Farben",     color: "green",  words: ["ROT", "BLAU", "GRÜN", "GELB"] },
+      { name: "Obst",       color: "blue",   words: ["APFEL", "BANANE", "KIRSCHE", "ERDBEERE"] },
+      { name: "Möbel",      color: "purple", words: ["STUHL", "TISCH", "SOFA", "SCHRANK"] }
+    ]
+  },
+  {
+    id: 2,
+    name: "Leicht",
+    categories: [
+      { name: "Planeten",          color: "yellow", words: ["MARS", "VENUS", "SATURN", "JUPITER"] },
+      { name: "Musikinstrumente",  color: "green",  words: ["GITARRE", "FLÖTE", "TROMMEL", "GEIGE"] },
+      { name: "Hauptstädte",       color: "blue",   words: ["BERLIN", "PARIS", "ROM", "MADRID"] },
+      { name: "Wetterphänomene",   color: "purple", words: ["REGEN", "SCHNEE", "HAGEL", "GEWITTER"] }
+    ]
+  },
+  {
+    id: 3,
+    name: "Mittel",
+    hint: "Achtung: Manche Wörter scheinen woanders hinzupassen!",
+    categories: [
+      { name: "Können fliegen",      color: "yellow", words: ["ADLER", "FLEDERMAUS", "BIENE", "SCHMETTERLING"] },
+      { name: "Europäische Flüsse",  color: "green",  words: ["RHEIN", "ELBE", "DONAU", "THEMSE"] },
+      { name: "Kräuter & Gewürze",   color: "blue",   words: ["BASILIKUM", "ROSMARIN", "THYMIAN", "MINZE"] },
+      { name: "Teile des Gesichts",  color: "purple", words: ["NASE", "MUND", "OHR", "WANGE"] }
+    ]
+  },
+  {
+    id: 4,
+    name: "Experte",
+    hint: "Diese Kategorien haben versteckte Gemeinsamkeiten!",
+    categories: [
+      { name: "Haben Ringe",          color: "yellow", words: ["SATURN", "OLYMPIA", "HERD", "BAUM"] },
+      { name: "Können stechen",       color: "green",  words: ["BIENE", "WESPE", "BRENNNESSEL", "KAKTUS"] },
+      { name: "Haben Flügel",         color: "blue",   words: ["SCHMETTERLING", "ENGEL", "WINDMÜHLE", "FLUGZEUG"] },
+      { name: "Kommen aus dem Boden", color: "purple", words: ["KARTOFFEL", "MAULWURF", "KOHLE", "DIAMANT"] }
+    ]
+  }
+];
+
+let currentLevel = 1;
+let lives = 4;
+let selected = [];
+let remainingWords = [];
+let foundCategories = [];
+let categoryMap = {};
+let scores = JSON.parse(localStorage.getItem('wortspiel-scores') || '{}');
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function goHome() { updateStartScreen(); showScreen('start-screen'); }
+function retryLevel() { startLevel(currentLevel); }
+function nextLevel() {
+  const next = currentLevel + 1;
+  if (next <= LEVELS.length) startLevel(next);
+  else goHome();
+}
+
+function startLevel(levelId) {
+  currentLevel = levelId;
+  const lvl = LEVELS[levelId - 1];
+  lives = 4;
+  selected = [];
+  foundCategories = [];
+  categoryMap = {};
+  remainingWords = [];
+  lvl.categories.forEach((cat, ci) => {
+    cat.words.forEach(w => { remainingWords.push(w); categoryMap[w] = ci; });
+  });
+  shuffle(remainingWords);
+  document.getElementById('game-level-badge').textContent = `Level ${levelId}: ${lvl.name}`;
+  document.getElementById('game-msg').textContent = lvl.hint || '';
+  document.getElementById('hint-bar').textContent = '';
+  document.getElementById('found-categories').innerHTML = '';
+  renderLives();
+  renderGrid();
+  showScreen('game-screen');
+}
+
+function renderLives() {
+  const el = document.getElementById('lives-display');
+  el.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const span = document.createElement('span');
+    span.className = 'life' + (i >= lives ? ' lost' : '');
+    span.textContent = '❤️';
+    el.appendChild(span);
+  }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('word-grid');
+  grid.innerHTML = '';
+  remainingWords.forEach(word => {
+    const tile = document.createElement('div');
+    tile.className = 'word-tile';
+    tile.textContent = word;
+    tile.dataset.word = word;
+    if (selected.includes(word)) tile.classList.add('selected');
+    tile.addEventListener('click', () => toggleWord(word));
+    grid.appendChild(tile);
+  });
+  document.getElementById('btn-submit').disabled = selected.length !== 4;
+}
+
+function toggleWord(word) {
+  const idx = selected.indexOf(word);
+  if (idx === -1) {
+    if (selected.length >= 4) return;
+    selected.push(word);
+  } else {
+    selected.splice(idx, 1);
+  }
+  document.getElementById('hint-bar').textContent = '';
+  renderGrid();
+}
+
+function deselectAll() { selected = []; renderGrid(); }
+function shuffleWords() { shuffle(remainingWords); renderGrid(); }
+
+function submitGuess() {
+  if (selected.length !== 4) return;
+  const lvl = LEVELS[currentLevel - 1];
+  const catIndices = selected.map(w => categoryMap[w]);
+  const allSame = catIndices.every(i => i === catIndices[0]);
+
+  if (allSame) {
+    const catIdx = catIndices[0];
+    const cat = lvl.categories[catIdx];
+    selected.forEach(word => {
+      const tile = document.querySelector(`[data-word="${word}"]`);
+      if (tile) tile.classList.add('bounce');
+    });
+    setTimeout(() => {
+      remainingWords = remainingWords.filter(w => !selected.includes(w));
+      foundCategories.push(catIdx);
+      const foundEl = document.getElementById('found-categories');
+      const row = document.createElement('div');
+      row.className = `found-row cat-${cat.color}`;
+      row.innerHTML = `<div class="cat-title">${cat.name}</div><div class="cat-words">${cat.words.join(' · ')}</div>`;
+      foundEl.appendChild(row);
+      selected = [];
+      setMsg('');
+      document.getElementById('hint-bar').textContent = '';
+      renderGrid();
+      if (remainingWords.length === 0) winGame();
+    }, 500);
+  } else {
+    const counts = {};
+    catIndices.forEach(i => { counts[i] = (counts[i] || 0) + 1; });
+    const maxCount = Math.max(...Object.values(counts));
+    if (maxCount === 3) document.getElementById('hint-bar').textContent = '💡 Nur ein Wort daneben!';
+    lives--;
+    renderLives();
+    selected.forEach(word => {
+      const tile = document.querySelector(`[data-word="${word}"]`);
+      if (tile) { tile.classList.remove('shake'); void tile.offsetWidth; tile.classList.add('shake'); }
+    });
+    setTimeout(() => {
+      selected.forEach(word => {
+        const tile = document.querySelector(`[data-word="${word}"]`);
+        if (tile) tile.classList.remove('shake');
+      });
+    }, 500);
+    if (lives <= 0) {
+      setTimeout(() => loseGame(), 600);
+    } else {
+      setMsg(`Falsch! Noch ${lives} Leben übrig.`);
+      selected = [];
+      renderGrid();
+    }
+  }
+}
+
+function setMsg(text) { document.getElementById('game-msg').textContent = text; }
+
+function winGame() {
+  const starsEarned = lives === 4 ? 3 : lives >= 2 ? 2 : 1;
+  const prevBest = scores[currentLevel] || 0;
+  scores[currentLevel] = Math.max(prevBest, starsEarned);
+  localStorage.setItem('wortspiel-scores', JSON.stringify(scores));
+  const sub = lives === 4 ? 'Perfekt – kein einziger Fehler! ⭐⭐⭐' : lives >= 2 ? 'Gut gemacht! ⭐⭐' : 'Knapp geschafft! ⭐';
+  document.getElementById('win-sub').textContent = sub;
+  renderSolution('win-solution');
+  const btnNext = document.getElementById('btn-next-level');
+  btnNext.style.display = currentLevel < LEVELS.length ? 'inline-block' : 'none';
+  launchConfetti();
+  showScreen('win-screen');
+}
+
+function loseGame() { renderSolution('lose-solution'); showScreen('lose-screen'); }
+
+function renderSolution(elId) {
+  const lvl = LEVELS[currentLevel - 1];
+  const el = document.getElementById(elId);
+  el.innerHTML = '';
+  lvl.categories.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = `sol-row cat-${cat.color}`;
+    row.innerHTML = `<div class="cat-title">${cat.name}</div><div class="cat-words">${cat.words.join(' · ')}</div>`;
+    el.appendChild(row);
+  });
+}
+
+function updateStartScreen() {
+  LEVELS.forEach(lvl => {
+    const el = document.getElementById(`stars-${lvl.id}`);
+    const s = scores[lvl.id] || 0;
+    el.textContent = s === 0 ? '' : '★'.repeat(s) + '☆'.repeat(3 - s);
+  });
+}
+
+function launchConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const pieces = Array.from({length: 80}, () => ({
+    x: Math.random() * canvas.width, y: -20,
+    r: Math.random() * 8 + 4,
+    d: Math.random() * 1.5 + 0.8,
+    color: ['#f9df6d','#a0c35a','#b0c4ef','#ba81c5','#ff6b6b','#ffa94d'][Math.floor(Math.random()*6)],
+    tilt: Math.random() * 20 - 10,
+    tiltSpeed: Math.random() * 0.08 - 0.04
+  }));
+  let frame = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, 1 - frame / 150);
+      ctx.fill();
+      p.y += p.d;
+      p.x += Math.sin(frame * 0.02 + p.tilt) * 1.2;
+      p.tilt += p.tiltSpeed;
+    });
+    ctx.globalAlpha = 1;
+    frame++;
+    if (frame < 180) requestAnimationFrame(draw);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  draw();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+updateStartScreen();
+</script>
+</body>
+</html>
