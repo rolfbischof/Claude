@@ -2,10 +2,12 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Wortsuche</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
   body {
     font-family: 'Segoe UI', sans-serif;
@@ -13,6 +15,8 @@
     color: #eee;
     min-height: 100vh;
     padding: 20px;
+    /* prevent page bounce/scroll during game */
+    overscroll-behavior: none;
   }
 
   h1 {
@@ -31,14 +35,11 @@
   }
 
   /* Category selection */
-  #category-screen {
-    max-width: 700px;
-    margin: 0 auto;
-  }
+  #category-screen { max-width: 700px; margin: 0 auto; }
 
   .category-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 16px;
     margin-top: 10px;
   }
@@ -52,12 +53,13 @@
     text-align: center;
     transition: all 0.2s;
     color: #eee;
+    /* larger touch target */
+    min-height: 110px;
   }
 
-  .cat-btn:hover {
+  .cat-btn:active {
     border-color: #e94560;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(233,69,96,0.3);
+    transform: scale(0.97);
   }
 
   .cat-btn .icon { font-size: 2.2rem; display: block; margin-bottom: 8px; }
@@ -65,13 +67,13 @@
   .cat-btn .count { font-size: 0.78rem; color: #888; margin-top: 4px; }
 
   /* Game screen */
-  #game-screen { display: none; max-width: 1000px; margin: 0 auto; }
+  #game-screen { display: none; max-width: 1100px; margin: 0 auto; }
 
   .game-header {
     display: flex;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: 12px;
+    margin-bottom: 16px;
     flex-wrap: wrap;
   }
 
@@ -79,15 +81,16 @@
     background: #0f3460;
     border: none;
     color: #eee;
-    padding: 8px 18px;
+    padding: 10px 18px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+    min-height: 44px; /* Apple HIG minimum touch target */
     transition: background 0.2s;
   }
-  .back-btn:hover { background: #e94560; }
+  .back-btn:active { background: #e94560; }
 
-  .game-title { font-size: 1.4rem; font-weight: 700; color: #e94560; flex: 1; }
+  .game-title { font-size: 1.3rem; font-weight: 700; color: #e94560; flex: 1; }
 
   #timer {
     font-size: 1.1rem;
@@ -97,57 +100,56 @@
     text-align: right;
   }
 
+  /* Layout: grid left, word list right (or stacked on small screens) */
   .game-layout {
     display: flex;
-    gap: 24px;
+    gap: 20px;
+    align-items: flex-start;
     flex-wrap: wrap;
     justify-content: center;
   }
 
   /* Grid */
   #grid-container {
-    position: relative;
+    /* block scroll/pan on this element so swipe = select */
+    touch-action: none;
     user-select: none;
+    -webkit-user-select: none;
   }
 
   #grid {
     display: grid;
-    gap: 2px;
+    gap: 3px;
     background: #16213e;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px;
     border: 2px solid #0f3460;
   }
 
   .cell {
-    width: 38px;
-    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1rem;
     font-weight: 700;
     border-radius: 6px;
-    cursor: pointer;
     background: #1a1a2e;
-    transition: background 0.1s;
+    transition: background 0.08s;
     letter-spacing: 0;
+    cursor: default;
   }
 
   .cell.highlighted { background: #e94560; color: #fff; }
-  .cell.found { background: #0f3460; color: #0ff; }
+  .cell.found       { background: #0f3460; color: #0ff; }
   .cell.found.highlighted { background: #095; color: #fff; }
 
   /* Word list */
-  .word-list-panel {
-    min-width: 200px;
-    flex: 1;
-  }
+  .word-list-panel { min-width: 180px; flex: 1; max-width: 260px; }
 
   .word-list-panel h3 {
-    font-size: 1rem;
+    font-size: 0.85rem;
     color: #888;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
   }
@@ -156,16 +158,16 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
 
   #word-list li {
-    padding: 8px 14px;
+    padding: 9px 14px;
     border-radius: 8px;
     background: #16213e;
     border: 2px solid #0f3460;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     letter-spacing: 1px;
     transition: all 0.3s;
   }
@@ -177,6 +179,22 @@
     text-decoration: line-through;
     opacity: 0.7;
   }
+
+  /* Difficulty */
+  .diff-row { display: flex; gap: 6px; align-items: center; }
+  .diff-btn {
+    background: #0f3460;
+    border: 2px solid transparent;
+    color: #eee;
+    padding: 7px 13px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    min-height: 36px;
+    transition: all 0.2s;
+  }
+  .diff-btn.active { border-color: #e94560; color: #e94560; }
+  .diff-btn:active { opacity: 0.7; }
 
   /* Win screen */
   #win-screen {
@@ -193,53 +211,35 @@
     background: #16213e;
     border: 2px solid #e94560;
     border-radius: 16px;
-    padding: 40px 50px;
+    padding: 36px 44px;
     text-align: center;
-    max-width: 380px;
+    max-width: 360px;
+    width: 90%;
   }
 
   .win-box h2 { font-size: 2rem; color: #e94560; margin-bottom: 10px; }
-  .win-box p { color: #aaa; margin-bottom: 24px; }
+  .win-box p  { color: #aaa; margin-bottom: 16px; }
   .win-box .time { font-size: 1.5rem; color: #0f9; font-weight: 700; margin-bottom: 20px; }
 
   .win-btn {
     background: #e94560;
     border: none;
     color: #fff;
-    padding: 12px 30px;
+    padding: 13px 28px;
     border-radius: 10px;
     cursor: pointer;
     font-size: 1rem;
     font-weight: 600;
     margin: 6px;
+    min-height: 48px;
     transition: opacity 0.2s;
   }
-  .win-btn:hover { opacity: 0.85; }
+  .win-btn:active { opacity: 0.8; }
   .win-btn.secondary { background: #0f3460; }
 
-  /* Difficulty */
-  .diff-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-left: auto;
-  }
-  .diff-btn {
-    background: #0f3460;
-    border: 2px solid transparent;
-    color: #eee;
-    padding: 6px 14px;
-    border-radius: 20px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: all 0.2s;
-  }
-  .diff-btn.active { border-color: #e94560; color: #e94560; }
-  .diff-btn:hover { background: #1c3a6e; }
-
-  @media (max-width: 560px) {
-    .cell { width: 30px; height: 30px; font-size: 0.82rem; }
-    .game-title { font-size: 1.1rem; }
+  /* Responsive cell size */
+  @media (max-width: 500px) {
+    .cell { font-size: 0.78rem; }
   }
 </style>
 </head>
@@ -277,7 +277,7 @@
 </div>
 
 <!-- Win Screen -->
-<div id="win-screen" style="display:none">
+<div id="win-screen">
   <div class="win-box">
     <h2>🎉 Gewonnen!</h2>
     <p>Du hast alle Wörter gefunden!</p>
@@ -289,7 +289,7 @@
 </div>
 
 <script>
-// ─── DATA ────────────────────────────────────────────────────────────────────
+// ─── DATA ─────────────────────────────────────────────────────────────────────
 const CATEGORIES = [
   {
     id: 'tiere', name: 'Tiere', icon: '🐾',
@@ -301,11 +301,11 @@ const CATEGORIES = [
   },
   {
     id: 'sport', name: 'Sport', icon: '⚽',
-    words: ['FUSSBALL','TENNIS','SCHWIMMEN','RADFAHREN','TURNEN','BOXEN','GOLF','VOLLEYBALL','BASKETBALL','SKIFAHREN','REITEN','LEICHTATHLETIK','HANDBALL','FECHTEN','RUDERN']
+    words: ['FUSSBALL','TENNIS','SCHWIMMEN','RADFAHREN','TURNEN','BOXEN','GOLF','VOLLEYBALL','BASKETBALL','SKIFAHREN','REITEN','HANDBALL','FECHTEN','RUDERN','KLETTERN']
   },
   {
     id: 'essen', name: 'Essen', icon: '🍕',
-    words: ['PIZZA','SPAGHETTI','SALAT','SUPPE','BROT','KUCHEN','SCHNITZEL','WURST','KAESEFONDUE','SUSHI','BURGER','NUDELN','REIS','TOMATE','GURKE']
+    words: ['PIZZA','SPAGHETTI','SALAT','SUPPE','BROT','KUCHEN','SCHNITZEL','WURST','FONDUE','SUSHI','BURGER','NUDELN','REIS','TOMATE','GURKE']
   },
   {
     id: 'berufe', name: 'Berufe', icon: '💼',
@@ -317,7 +317,7 @@ const CATEGORIES = [
   },
   {
     id: 'musik', name: 'Musik', icon: '🎵',
-    words: ['GITARRE','KLAVIER','GEIGE','TROMPETE','SCHLAGZEUG','FLOETE','CELLO','SAXOPHON','ORGEL','HARFE','BRATSCHE','TUBA','AKKORDEON','BARITONE','QUERFLOTE']
+    words: ['GITARRE','KLAVIER','GEIGE','TROMPETE','SCHLAGZEUG','FLOETE','CELLO','SAXOPHON','ORGEL','HARFE','BRATSCHE','TUBA','AKKORDEON','KEYBOARD','POSAUNE']
   },
   {
     id: 'natur', name: 'Natur', icon: '🌿',
@@ -325,26 +325,27 @@ const CATEGORIES = [
   }
 ];
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
+// ─── STATE ────────────────────────────────────────────────────────────────────
 let currentCat = null;
-let gridData = [];
-let gridSize = 14;
+let gridData   = [];
+let gridSize   = 14;
+let cellPx     = 40;   // computed cell pixel size
 let placedWords = [];
-let foundWords = new Set();
-let selecting = false;
-let startCell = null;
+let foundWords  = new Set();
+let selecting   = false;
+let startCell   = null;
 let currentSelection = [];
 let timerInterval = null;
 let seconds = 0;
 let difficulty = 'leicht';
 
 const DIFF_SETTINGS = {
-  leicht: { size: 12, count: 8 },
+  leicht: { size: 12, count: 8  },
   mittel: { size: 14, count: 10 },
   schwer: { size: 16, count: 13 }
 };
 
-// ─── CATEGORY SCREEN ─────────────────────────────────────────────────────────
+// ─── CATEGORY SCREEN ──────────────────────────────────────────────────────────
 function showCategories() {
   document.getElementById('category-screen').style.display = '';
   document.getElementById('game-screen').style.display = 'none';
@@ -353,8 +354,7 @@ function showCategories() {
 }
 
 function renderCategories() {
-  const grid = document.getElementById('cat-grid');
-  grid.innerHTML = CATEGORIES.map(c => `
+  document.getElementById('cat-grid').innerHTML = CATEGORIES.map(c => `
     <div class="cat-btn" onclick="startGame('${c.id}')">
       <span class="icon">${c.icon}</span>
       <div class="name">${c.name}</div>
@@ -363,7 +363,7 @@ function renderCategories() {
   `).join('');
 }
 
-// ─── GAME START ──────────────────────────────────────────────────────────────
+// ─── DIFFICULTY ───────────────────────────────────────────────────────────────
 function setDiff(d) {
   difficulty = d;
   document.querySelectorAll('.diff-btn').forEach(b => {
@@ -372,6 +372,7 @@ function setDiff(d) {
   if (currentCat) startGame(currentCat.id);
 }
 
+// ─── GAME START ───────────────────────────────────────────────────────────────
 function startGame(catId) {
   currentCat = CATEGORIES.find(c => c.id === catId);
   const { size, count } = DIFF_SETTINGS[difficulty];
@@ -383,15 +384,11 @@ function startGame(catId) {
   document.getElementById('game-cat-title').textContent = currentCat.icon + ' ' + currentCat.name;
 
   foundWords = new Set();
-  stopTimer();
-  seconds = 0;
-  updateTimerDisplay();
-  startTimer();
+  stopTimer(); seconds = 0; updateTimerDisplay(); startTimer();
 
-  // pick words
   const pool = [...currentCat.words].sort(() => Math.random() - 0.5).slice(0, count);
   buildGrid(pool);
-  renderWordList(pool);
+  renderWordList();
 }
 
 function restartGame() {
@@ -399,51 +396,41 @@ function restartGame() {
   startGame(currentCat.id);
 }
 
-// ─── GRID GENERATION ─────────────────────────────────────────────────────────
-const DIRS = [
-  [0,1],[1,0],[1,1],[0,-1],[-1,0],[-1,-1],[1,-1],[-1,1]
-];
+// ─── GRID GENERATION ──────────────────────────────────────────────────────────
+const DIRS = [[0,1],[1,0],[1,1],[0,-1],[-1,0],[-1,-1],[1,-1],[-1,1]];
 
 function buildGrid(words) {
   gridData = Array.from({length: gridSize}, () => Array(gridSize).fill(''));
   placedWords = [];
 
-  // sort longest first for better placement
-  const sorted = [...words].sort((a,b) => b.length - a.length);
-
-  for (const word of sorted) {
+  for (const word of [...words].sort((a,b) => b.length - a.length))
     placeWord(word);
-  }
 
-  // fill empty cells
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   for (let r = 0; r < gridSize; r++)
     for (let c = 0; c < gridSize; c++)
       if (!gridData[r][c]) gridData[r][c] = alpha[Math.floor(Math.random() * 26)];
 
+  computeCellSize();
   renderGrid();
 }
 
 function placeWord(word) {
-  const shuffledDirs = [...DIRS].sort(() => Math.random() - 0.5);
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const dir = shuffledDirs[attempt % shuffledDirs.length];
-    const row = Math.floor(Math.random() * gridSize);
-    const col = Math.floor(Math.random() * gridSize);
-    if (canPlace(word, row, col, dir)) {
-      doPlace(word, row, col, dir);
-      return true;
-    }
+  const dirs = [...DIRS].sort(() => Math.random() - 0.5);
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const dir = dirs[attempt % dirs.length];
+    const r = Math.floor(Math.random() * gridSize);
+    const c = Math.floor(Math.random() * gridSize);
+    if (canPlace(word, r, c, dir)) { doPlace(word, r, c, dir); return; }
   }
-  return false;
 }
 
 function canPlace(word, r, c, [dr, dc]) {
   for (let i = 0; i < word.length; i++) {
-    const nr = r + dr * i, nc = c + dc * i;
+    const nr = r + dr*i, nc = c + dc*i;
     if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) return false;
-    const existing = gridData[nr][nc];
-    if (existing && existing !== word[i]) return false;
+    const ex = gridData[nr][nc];
+    if (ex && ex !== word[i]) return false;
   }
   return true;
 }
@@ -451,94 +438,90 @@ function canPlace(word, r, c, [dr, dc]) {
 function doPlace(word, r, c, [dr, dc]) {
   const cells = [];
   for (let i = 0; i < word.length; i++) {
-    const nr = r + dr * i, nc = c + dc * i;
+    const nr = r + dr*i, nc = c + dc*i;
     gridData[nr][nc] = word[i];
     cells.push([nr, nc]);
   }
   placedWords.push({ word, cells });
 }
 
-// ─── RENDER GRID ─────────────────────────────────────────────────────────────
+// ─── RESPONSIVE CELL SIZE ─────────────────────────────────────────────────────
+function computeCellSize() {
+  // Available width = viewport minus padding minus word list
+  const vw = Math.min(window.innerWidth, 1100);
+  const wordPanelW = vw >= 600 ? 220 : 0;
+  const padding = 60; // body padding + gap
+  const available = vw - wordPanelW - padding;
+  const gap = 3;
+  // cell = (available - gaps) / gridSize
+  cellPx = Math.floor((available - gap * (gridSize - 1)) / gridSize);
+  cellPx = Math.max(28, Math.min(cellPx, 48)); // clamp 28–48 px
+}
+
+// ─── RENDER GRID ──────────────────────────────────────────────────────────────
 function renderGrid() {
   const grid = document.getElementById('grid');
-  grid.style.gridTemplateColumns = `repeat(${gridSize}, 38px)`;
+  grid.style.gridTemplateColumns = `repeat(${gridSize}, ${cellPx}px)`;
   grid.innerHTML = '';
 
   for (let r = 0; r < gridSize; r++) {
     for (let c = 0; c < gridSize; c++) {
       const cell = document.createElement('div');
       cell.className = 'cell';
+      cell.style.width  = cellPx + 'px';
+      cell.style.height = cellPx + 'px';
+      cell.style.fontSize = Math.max(11, cellPx * 0.44) + 'px';
       cell.textContent = gridData[r][c];
       cell.dataset.r = r;
       cell.dataset.c = c;
-
-      cell.addEventListener('mousedown', onCellDown);
-      cell.addEventListener('mouseover', onCellOver);
-      cell.addEventListener('touchstart', onTouchStart, {passive: false});
-      cell.addEventListener('touchmove', onTouchMove, {passive: false});
-
       grid.appendChild(cell);
     }
   }
 
-  document.addEventListener('mouseup', onMouseUp);
-  document.addEventListener('touchend', onTouchEnd);
+  // Attach pointer events once on the container (works for finger & Apple Pencil)
+  const container = document.getElementById('grid-container');
+  container.onpointerdown  = onPointerDown;
+  container.onpointermove  = onPointerMove;
+  container.onpointerup    = onPointerUp;
+  container.onpointercancel = onPointerUp;
+  // also keep mouse for desktop
+  container.onmousedown = onPointerDown;
+  document.addEventListener('mouseup', onPointerUp);
 }
 
 function getCell(r, c) {
   return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
 }
 
-// ─── SELECTION LOGIC ─────────────────────────────────────────────────────────
-function onCellDown(e) {
-  e.preventDefault();
-  selecting = true;
-  startCell = {r: +this.dataset.r, c: +this.dataset.c};
-  currentSelection = [startCell];
-  updateHighlight([startCell]);
-}
-
-function onCellOver(e) {
-  if (!selecting) return;
-  const r = +this.dataset.r, c = +this.dataset.c;
-  const sel = getLineCells(startCell.r, startCell.c, r, c);
-  if (sel) {
-    currentSelection = sel;
-    updateHighlight(sel);
-  }
-}
-
-function onMouseUp() {
-  if (!selecting) return;
-  selecting = false;
-  checkSelection();
-  clearHighlight();
-}
-
-// Touch support
-function cellFromTouch(e) {
-  const touch = e.touches[0] || e.changedTouches[0];
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+function cellFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
   return el && el.classList.contains('cell') ? el : null;
 }
 
-function onTouchStart(e) {
+// ─── POINTER EVENTS (finger, Apple Pencil, mouse) ────────────────────────────
+function onPointerDown(e) {
+  // only primary pointer (finger or pencil tip)
+  if (e.pointerType && e.buttons === 0 && e.type === 'pointerdown') return;
   e.preventDefault();
-  const el = cellFromTouch(e);
-  if (el) { selecting = true; startCell = {r: +el.dataset.r, c: +el.dataset.c}; currentSelection = [startCell]; updateHighlight([startCell]); }
+  const el = e.target.classList.contains('cell') ? e.target : cellFromPoint(e.clientX, e.clientY);
+  if (!el) return;
+  selecting = true;
+  startCell = { r: +el.dataset.r, c: +el.dataset.c };
+  currentSelection = [startCell];
+  updateHighlight(currentSelection);
 }
 
-function onTouchMove(e) {
-  e.preventDefault();
+function onPointerMove(e) {
   if (!selecting) return;
-  const el = cellFromTouch(e);
+  e.preventDefault();
+  const el = cellFromPoint(e.clientX, e.clientY);
   if (!el) return;
   const r = +el.dataset.r, c = +el.dataset.c;
   const sel = getLineCells(startCell.r, startCell.c, r, c);
   if (sel) { currentSelection = sel; updateHighlight(sel); }
 }
 
-function onTouchEnd(e) {
+function onPointerUp(e) {
   if (!selecting) return;
   selecting = false;
   checkSelection();
@@ -547,97 +530,85 @@ function onTouchEnd(e) {
 
 function getLineCells(r1, c1, r2, c2) {
   const dr = r2 - r1, dc = c2 - c1;
-  // must be straight or diagonal
   if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return null;
   const len = Math.max(Math.abs(dr), Math.abs(dc));
-  if (len === 0) return [{r: r1, c: c1}];
   const sr = Math.sign(dr), sc = Math.sign(dc);
   const cells = [];
-  for (let i = 0; i <= len; i++) cells.push({r: r1 + sr * i, c: c1 + sc * i});
+  for (let i = 0; i <= len; i++) cells.push({ r: r1 + sr*i, c: c1 + sc*i });
   return cells;
 }
 
 function updateHighlight(cells) {
   document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted'));
-  cells.forEach(({r, c}) => {
-    const el = getCell(r, c);
-    if (el) el.classList.add('highlighted');
-  });
+  cells.forEach(({r, c}) => getCell(r, c)?.classList.add('highlighted'));
 }
 
 function clearHighlight() {
   document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted'));
 }
 
+// ─── CHECK WORD ───────────────────────────────────────────────────────────────
 function checkSelection() {
   if (!currentSelection.length) return;
-  const forward = currentSelection.map(({r,c}) => gridData[r][c]).join('');
+  const forward  = currentSelection.map(({r, c}) => gridData[r][c]).join('');
   const backward = [...forward].reverse().join('');
 
   for (const {word, cells} of placedWords) {
     if (foundWords.has(word)) continue;
     if (word === forward || word === backward) {
       foundWords.add(word);
-      markFoundCells(cells);
-      markFoundWord(word);
+      cells.forEach(([r, c]) => getCell(r, c)?.classList.add('found'));
+      document.querySelector(`#word-list li[data-word="${word}"]`)?.classList.add('found');
       if (foundWords.size === placedWords.length) setTimeout(showWin, 300);
       return;
     }
   }
 }
 
-function markFoundCells(cells) {
-  cells.forEach(([r, c]) => {
-    const el = getCell(r, c);
-    if (el) el.classList.add('found');
-  });
+// ─── WORD LIST ────────────────────────────────────────────────────────────────
+function renderWordList() {
+  document.getElementById('word-list').innerHTML =
+    placedWords.map(p => `<li data-word="${p.word}">${p.word}</li>`).join('');
 }
 
-function markFoundWord(word) {
-  document.querySelectorAll('#word-list li').forEach(li => {
-    if (li.dataset.word === word) li.classList.add('found');
-  });
-}
-
-// ─── WORD LIST ───────────────────────────────────────────────────────────────
-function renderWordList(words) {
-  const ul = document.getElementById('word-list');
-  // only show words that were actually placed
-  const placed = placedWords.map(p => p.word);
-  ul.innerHTML = placed.map(w =>
-    `<li data-word="${w}">${w}</li>`
-  ).join('');
-}
-
-// ─── TIMER ───────────────────────────────────────────────────────────────────
-function startTimer() {
-  timerInterval = setInterval(() => {
-    seconds++;
-    updateTimerDisplay();
-  }, 1000);
-}
-
-function stopTimer() {
-  clearInterval(timerInterval);
-}
-
+// ─── TIMER ────────────────────────────────────────────────────────────────────
+function startTimer() { timerInterval = setInterval(() => { seconds++; updateTimerDisplay(); }, 1000); }
+function stopTimer()  { clearInterval(timerInterval); }
 function updateTimerDisplay() {
   const m = String(Math.floor(seconds / 60)).padStart(2, '0');
   const s = String(seconds % 60).padStart(2, '0');
   document.getElementById('timer').textContent = `${m}:${s}`;
 }
-
 function formatTime(sec) {
-  const m = Math.floor(sec / 60), s = sec % 60;
+  const m = Math.floor(sec/60), s = sec % 60;
   return m > 0 ? `${m} Min ${s} Sek` : `${s} Sekunden`;
 }
 
-// ─── WIN ─────────────────────────────────────────────────────────────────────
+// ─── WIN ──────────────────────────────────────────────────────────────────────
 function showWin() {
   stopTimer();
   document.getElementById('win-time').textContent = formatTime(seconds);
   document.getElementById('win-screen').style.display = 'flex';
 }
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (currentCat && document.getElementById('game-screen').style.display !== 'none') {
+    computeCellSize();
+    // re-render grid preserving found state
+    const foundCells = new Set();
+    document.querySelectorAll('.cell.found').forEach(el => foundCells.add(el.dataset.r + ',' + el.dataset.c));
+    renderGrid();
+    foundCells.forEach(key => {
+      const [r, c] = key.split(',');
+      getCell(+r, +c)?.classList.add('found');
+    });
+    // re-mark found words
+    foundWords.forEach(word => {
+      document.querySelector(`#word-list li[data-word="${word}"]`)?.classList.add('found');
+    });
+  }
+});
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 renderCategories();
