@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Quiz – Durch die Jahrzehnte</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red:    #E21B3C;
+    --blue:   #1368CE;
+    --yellow: #D89E00;
+    --green:  #26890C;
+    --bg:     #1a1a2e;
+  }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    overflow-x: hidden;
+  }
+
+  /* ── START ── */
+  #start-screen {
+    text-align: center; max-width: 500px; width: 100%;
+    animation: fadeIn .5s ease;
+  }
+  #start-screen .logo { font-size: clamp(40px, 10vw, 70px); margin-bottom: 10px; }
+  #start-screen h1 { font-size: clamp(22px, 5vw, 36px); margin-bottom: 6px; }
+  #start-screen p  { color: #aaa; font-size: clamp(13px, 3vw, 16px); margin-bottom: 24px; }
+  .info-box {
+    background: rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 16px; margin-bottom: 24px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  .info-item { text-align: center; }
+  .info-item .val { font-size: 28px; font-weight: 700; color: #f5c518; }
+  .info-item .lbl { font-size: 12px; color: #aaa; margin-top: 2px; }
+
+  .name-wrap { margin-bottom: 16px; text-align: left; }
+  .name-wrap label { display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; font-weight: 600; }
+  .name-wrap input {
+    width: 100%; padding: 14px 18px; border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08);
+    color: white; font-size: clamp(15px, 3.5vw, 17px); font-weight: 600; outline: none;
+    transition: border-color .2s;
+  }
+  .name-wrap input::placeholder { color: #555; font-weight: 400; }
+  .name-wrap input:focus { border-color: #f5c518; }
+
+  .btn-yellow {
+    background: linear-gradient(135deg, #f5c518, #e8a000);
+    color: #1a1a2e; border: none; border-radius: 50px;
+    padding: 16px 48px; font-size: clamp(16px, 4vw, 20px);
+    font-weight: 800; cursor: pointer; width: 100%;
+    box-shadow: 0 4px 20px rgba(245,197,24,0.4);
+    transition: transform .15s, box-shadow .15s; margin-bottom: 12px;
+  }
+  .btn-yellow:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(245,197,24,0.5); }
+  .btn-yellow:active { transform: translateY(0); }
+
+  .btn-ghost {
+    background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 50px; padding: 12px 32px; font-size: clamp(13px, 3vw, 15px);
+    font-weight: 600; cursor: pointer; width: 100%; transition: background .2s;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.14); }
+
+  /* ── GAME ── */
+  #game-screen { display: none; width: 100%; max-width: 700px; animation: fadeIn .3s ease; }
+
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; gap: 12px;
+  }
+  .q-counter {
+    background: rgba(255,255,255,0.12); border-radius: 20px;
+    padding: 6px 16px; font-size: 13px; font-weight: 600; white-space: nowrap;
+  }
+  .score-badge {
+    background: rgba(255,255,255,0.12); border-radius: 20px;
+    padding: 6px 16px; font-size: 13px; font-weight: 700;
+    color: #f5c518; white-space: nowrap;
+  }
+
+  .question-box {
+    background: rgba(255,255,255,0.07); border-radius: 16px;
+    padding: clamp(16px, 4vw, 28px); text-align: center; margin-bottom: 14px;
+    min-height: 90px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .question-box p { font-size: clamp(15px, 3.5vw, 20px); font-weight: 700; line-height: 1.4; }
+
+  .answers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ans-btn {
+    border: none; border-radius: 12px; padding: clamp(14px, 3vw, 20px) 14px;
+    font-size: clamp(13px, 2.8vw, 16px); font-weight: 700; color: white;
+    cursor: pointer; display: flex; align-items: center; gap: 10px;
+    transition: transform .12s, filter .12s, opacity .3s;
+    text-align: left; line-height: 1.3; min-height: 70px;
+  }
+  .ans-btn:active { transform: scale(0.96); }
+  .ans-btn .shape { font-size: clamp(18px, 3vw, 24px); flex-shrink: 0; }
+  .ans-btn.red    { background: var(--red); }
+  .ans-btn.blue   { background: var(--blue); }
+  .ans-btn.yellow { background: var(--yellow); }
+  .ans-btn.green  { background: var(--green); }
+  .ans-btn.correct { outline: 4px solid white; filter: brightness(1.15); animation: pulse .4s ease; }
+  .ans-btn.wrong   { opacity: 0.28; filter: grayscale(0.5); }
+  .ans-btn.disabled { pointer-events: none; }
+
+  /* ── RESULT OVERLAY ── */
+  #result-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 10;
+    align-items: center; justify-content: center; flex-direction: column;
+    text-align: center; padding: 20px;
+  }
+  #result-overlay.show { display: flex; animation: fadeIn .3s ease; }
+  .result-icon { font-size: 64px; margin-bottom: 12px; animation: bounce .5s ease; }
+  .result-text { font-size: clamp(22px, 5vw, 30px); font-weight: 800; margin-bottom: 6px; }
+  .result-sub  { font-size: clamp(13px, 3vw, 16px); color: #ccc; margin-bottom: 12px; }
+  .result-correct { font-size: clamp(14px, 3vw, 17px); color: #a5d6a7; margin-bottom: 24px; font-weight: 600; }
+  .btn-next {
+    background: white; color: #1a1a2e; border: none; border-radius: 50px;
+    padding: 14px 44px; font-size: clamp(15px, 3.5vw, 18px);
+    font-weight: 800; cursor: pointer; transition: transform .15s;
+  }
+  .btn-next:hover { transform: scale(1.03); }
+
+  /* ── END ── */
+  #end-screen { display: none; text-align: center; max-width: 540px; width: 100%; animation: fadeIn .5s ease; }
+  .trophy { font-size: 80px; margin-bottom: 8px; }
+  .end-name { font-size: clamp(16px, 4vw, 22px); color: #f5c518; font-weight: 700; margin-bottom: 4px; }
+  #end-screen h2 { font-size: clamp(22px, 5vw, 32px); margin-bottom: 4px; }
+  .final-score { font-size: clamp(52px, 13vw, 86px); font-weight: 900; color: #f5c518; line-height: 1; margin: 10px 0; }
+  .final-sub { color: #aaa; font-size: clamp(13px, 3vw, 16px); margin-bottom: 8px; }
+  .stars { font-size: clamp(30px, 7vw, 48px); margin-bottom: 24px; }
+
+  /* ── LEADERBOARD ── */
+  .leaderboard {
+    background: rgba(255,255,255,0.06); border-radius: 16px;
+    padding: 16px; margin-bottom: 20px; text-align: left;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .leaderboard h3 {
+    font-size: 14px; font-weight: 700; color: #f5c518; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 12px; text-align: center;
+  }
+  .lb-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; margin-bottom: 4px;
+    background: rgba(255,255,255,0.04); transition: background .2s;
+  }
+  .lb-row.me { background: rgba(245,197,24,0.15); border: 1px solid rgba(245,197,24,0.3); }
+  .lb-rank { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+  .lb-name { flex: 1; font-weight: 600; font-size: clamp(13px, 3vw, 15px); }
+  .lb-score { font-weight: 800; color: #f5c518; font-size: clamp(14px, 3vw, 16px); white-space: nowrap; }
+  .lb-empty { color: #555; font-size: 13px; text-align: center; padding: 8px 0; }
+
+  .end-btns { display: flex; flex-direction: column; gap: 10px; }
+
+  @keyframes fadeIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  @keyframes bounce  { 0%{transform:scale(0)} 60%{transform:scale(1.2)} 100%{transform:scale(1)} }
+</style>
+</head>
+<body>
+
+<!-- START -->
+<div id="start-screen">
+  <div class="logo">🕹️</div>
+  <h1>Durch die Jahrzehnte</h1>
+  <p>Wie gut kennst du die Geschichte?</p>
+  <div class="info-box">
+    <div class="info-item"><div class="val">15</div><div class="lbl">Fragen</div></div>
+    <div class="info-item"><div class="val">∞</div><div class="lbl">Zeit</div></div>
+  </div>
+  <div class="name-wrap">
+    <label for="player-name">Dein Name</label>
+    <input type="text" id="player-name" placeholder="Name eingeben…" maxlength="30" autocomplete="off">
+  </div>
+  <button class="btn-yellow" onclick="startGame()">▶  Spiel starten</button>
+  <button class="btn-ghost" onclick="showLeaderboard()">🏆  Rangliste anzeigen</button>
+</div>
+
+<!-- GAME -->
+<div id="game-screen">
+  <div class="top-bar">
+    <span class="q-counter" id="q-counter">Frage 1 / 15</span>
+    <span class="score-badge">⭐ <span id="score-display">0</span></span>
+  </div>
+  <div class="question-box"><p id="question-text"></p></div>
+  <div class="answers" id="answers"></div>
+</div>
+
+<!-- RESULT OVERLAY -->
+<div id="result-overlay">
+  <div class="result-icon" id="result-icon"></div>
+  <div class="result-text" id="result-text"></div>
+  <div class="result-sub"  id="result-sub"></div>
+  <div class="result-correct" id="result-correct"></div>
+  <button class="btn-next" id="btn-next" onclick="nextQuestion()">Weiter →</button>
+</div>
+
+<!-- END -->
+<div id="end-screen">
+  <div class="trophy" id="trophy">🏆</div>
+  <div class="end-name" id="end-name"></div>
+  <h2>Quiz beendet!</h2>
+  <div class="final-score" id="final-score"></div>
+  <div class="final-sub" id="final-sub"></div>
+  <div class="stars" id="stars"></div>
+
+  <div class="leaderboard">
+    <h3>🏆 Rangliste</h3>
+    <div id="lb-list"></div>
+  </div>
+
+  <div class="end-btns">
+    <button class="btn-yellow" onclick="restartGame()">↺  Nochmal spielen</button>
+    <button class="btn-ghost"  onclick="clearLeaderboard()">🗑  Rangliste löschen</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD SCREEN -->
+<div id="lb-screen" style="display:none; text-align:center; max-width:500px; width:100%; animation: fadeIn .4s ease;">
+  <div style="font-size:60px; margin-bottom:10px;">🏆</div>
+  <h2 style="margin-bottom:20px;">Rangliste</h2>
+  <div class="leaderboard">
+    <div id="lb-list-main"></div>
+  </div>
+  <button class="btn-yellow" onclick="backToStart()">← Zurück</button>
+</div>
+
+<script>
+const QUESTIONS = [
+  {q:"Was fand 1969 als welthistorisches Ereignis statt?",answers:["Erster Satellit im All","Erfindung des Internets","Mondlandung","Gründung der UNO"],correct:2},
+  {q:"Was wurde 1947 in der Schweiz als Vorsorge für alle eingeführt?",answers:["AHV","IV","ALV","BVG"],correct:0},
+  {q:"Welche Band trennte sich 1970 offiziell?",answers:["The Rolling Stones","The Beatles","The Who","Pink Floyd"],correct:1},
+  {q:"Was waren die 'autofreien Sonntage' in der Schweiz 1973?",answers:["Sonntagsmärkte in der Stadt","Umweltschutz-Aktionen","Fahrverbote wegen der Ölkrise","Sporttage für Fussgänger"],correct:2},
+  {q:"Mit welchem Song gewann ABBA 1974 den Eurovision Song Contest?",answers:["Mamma Mia","Waterloo","Dancing Queen","Fernando"],correct:1},
+  {q:"Wer starb 1977 in Memphis, Tennessee?",answers:["Jim Morrison","Freddie Mercury","Elvis Presley","John Lennon"],correct:2},
+  {q:"Was wurde 1992 zum ersten Mal von einem Mobiltelefon gesendet?",answers:["Eine E-Mail","Eine Sprachnachricht","Ein Foto","Eine SMS"],correct:3},
+  {q:"Was war der Tamagotchi, der 1996 zum Welthit wurde?",answers:["Ein tragbarer Musikplayer","Ein virtuelles Haustier im Schlüsselanhänger","Eine Pokémon-Figur","Ein japanisches Videospiel"],correct:1},
+  {q:"Welche Suchmaschine wurde 1998 von Larry Page und Sergey Brin gegründet?",answers:["Yahoo","Bing","Google","AltaVista"],correct:2},
+  {q:"Welches Überschallflugzeug absolvierte 2003 seinen letzten Flug?",answers:["Boeing 747","Tupolev Tu-144","Airbus A380","Concorde"],correct:3},
+  {q:"Was brachte Apple im Jahr 2008 erstmals auf den Markt?",answers:["iPod","iPhone","iPad","iMac"],correct:1},
+  {q:"Welcher Kalender prophezeite das Weltende für den 21. Dezember 2012?",answers:["Chinesischer Kalender","Aztekenkalender","Julianischer Kalender","Majakalender"],correct:3},
+  {q:"Was haben Silvester Stallone, Donald Trump und Udo Lindenberg 2026 mit Grosi gemeinsam?",answers:["Sie besitzen alle ein GA","Sie sind alle 80 Jahre alt","Sie haben beide gerne Salat","Sie wandern alle gerne"],correct:1},
+  {q:"Was brannte am 15. April 2019 in Paris fast vollständig ab?",answers:["Notre-Dame","Louvre","Sacré-Cœur","Eiffelturm"],correct:0},
+  {q:"Was wurde im September 2021 in der Schweiz an der Urne angenommen?",answers:["Ehe für alle","Impfpflicht","Rahmenabkommen EU","CO2-Gesetz"],correct:0}
+];
+
+const COLORS = ['red','blue','yellow','green'];
+const SHAPES = ['▲','◆','●','■'];
+const MEDALS = ['🥇','🥈','🥉'];
+
+let current = 0, score = 0, playerName = '';
+
+// ── Leaderboard (localStorage) ──
+function getScores() {
+  try { return JSON.parse(localStorage.getItem('quiz_scores') || '[]'); } catch(e) { return []; }
+}
+function saveScore(name, sc) {
+  const scores = getScores();
+  scores.push({ name, score: sc, date: new Date().toLocaleDateString('de-CH') });
+  scores.sort((a,b) => b.score - a.score);
+  localStorage.setItem('quiz_scores', JSON.stringify(scores.slice(0, 20)));
+}
+function clearLeaderboard() {
+  if (confirm('Rangliste wirklich löschen?')) {
+    localStorage.removeItem('quiz_scores');
+    renderLB('lb-list', playerName);
+  }
+}
+
+function renderLB(targetId, highlight) {
+  const scores = getScores();
+  const el = document.getElementById(targetId);
+  if (!scores.length) {
+    el.innerHTML = '<div class="lb-empty">Noch keine Einträge.</div>';
+    return;
+  }
+  el.innerHTML = scores.map((s, i) => {
+    const medal = MEDALS[i] || `${i+1}.`;
+    const isMe = s.name === highlight && s.score === score && i === scores.findIndex(x => x.name === highlight && x.score === score);
+    return `<div class="lb-row${isMe ? ' me' : ''}">
+      <span class="lb-rank">${medal}</span>
+      <span class="lb-name">${s.name}</span>
+      <span class="lb-score">${s.score} / ${QUESTIONS.length}</span>
+    </div>`;
+  }).join('');
+}
+
+function showLeaderboard() {
+  hide('start-screen');
+  document.getElementById('lb-screen').style.display = 'block';
+  renderLB('lb-list-main', '');
+}
+function backToStart() {
+  document.getElementById('lb-screen').style.display = 'none';
+  show('start-screen');
+}
+
+// ── Helpers ──
+function show(id) { document.getElementById(id).style.display = 'block'; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+// ── Game ──
+function startGame() {
+  playerName = document.getElementById('player-name').value.trim() || 'Spieler';
+  hide('start-screen');
+  show('game-screen');
+  current = 0; score = 0;
+  showQuestion();
+}
+
+function showQuestion() {
+  const q = QUESTIONS[current];
+  document.getElementById('q-counter').textContent = `Frage ${current+1} / ${QUESTIONS.length}`;
+  document.getElementById('question-text').textContent = q.q;
+  document.getElementById('score-display').textContent = score;
+
+  const ans = document.getElementById('answers');
+  ans.innerHTML = '';
+  q.answers.forEach((a, i) => {
+    const btn = document.createElement('button');
+    btn.className = `ans-btn ${COLORS[i]}`;
+    btn.innerHTML = `<span class="shape">${SHAPES[i]}</span>${a}`;
+    btn.onclick = () => selectAnswer(i);
+    ans.appendChild(btn);
+  });
+}
+
+function selectAnswer(idx) {
+  const q = QUESTIONS[current];
+  const btns = document.querySelectorAll('.ans-btn');
+  btns.forEach(b => b.classList.add('disabled'));
+
+  const correct = q.correct;
+  const isRight = idx === correct;
+  if (isRight) score++;
+
+  btns.forEach((b, i) => {
+    b.classList.add(i === correct ? 'correct' : 'wrong');
+  });
+
+  document.getElementById('result-icon').textContent    = isRight ? '🎉' : '😬';
+  document.getElementById('result-text').textContent    = isRight ? 'Richtig!' : 'Leider falsch!';
+  document.getElementById('result-sub').textContent     = isRight ? `Super! ${score} von ${current+1} richtig.` : 'Schade – weiter so!';
+  document.getElementById('result-correct').textContent = isRight ? '' : `✓ Richtige Antwort: ${q.answers[correct]}`;
+  document.getElementById('btn-next').textContent       = current < QUESTIONS.length - 1 ? 'Weiter →' : 'Ergebnis anzeigen';
+
+  setTimeout(() => document.getElementById('result-overlay').classList.add('show'), 250);
+}
+
+function nextQuestion() {
+  document.getElementById('result-overlay').classList.remove('show');
+  current++;
+  if (current < QUESTIONS.length) {
+    setTimeout(showQuestion, 200);
+  } else {
+    showEnd();
+  }
+}
+
+function showEnd() {
+  hide('game-screen');
+  show('end-screen');
+
+  saveScore(playerName, score);
+
+  const pct = score / QUESTIONS.length;
+  let trophy = '🥉', stars = '⭐';
+  if (pct === 1)       { trophy = '🏆'; stars = '⭐⭐⭐'; }
+  else if (pct >= 0.7) { trophy = '🥇'; stars = '⭐⭐⭐'; }
+  else if (pct >= 0.5) { trophy = '🥈'; stars = '⭐⭐'; }
+
+  document.getElementById('trophy').textContent      = trophy;
+  document.getElementById('end-name').textContent    = `🎮 ${playerName}`;
+  document.getElementById('final-score').textContent = `${score} / ${QUESTIONS.length}`;
+  document.getElementById('stars').textContent       = stars;
+
+  let msg = '';
+  if (pct === 1)       msg = 'Perfekt! Du bist ein Geschichts-Genie! 🧠';
+  else if (pct >= 0.8) msg = 'Ausgezeichnet! Fast perfekt!';
+  else if (pct >= 0.6) msg = 'Sehr gut! Du kennst dich gut aus.';
+  else if (pct >= 0.4) msg = 'Nicht schlecht – noch etwas üben!';
+  else                  msg = 'Kopf hoch – beim nächsten Mal besser!';
+  document.getElementById('final-sub').textContent = msg;
+
+  renderLB('lb-list', playerName);
+}
+
+function restartGame() {
+  hide('end-screen');
+  show('start-screen');
+}
+
+document.getElementById('player-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startGame();
+});
+</script>
+</body>
+</html>
