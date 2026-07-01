@@ -9,6 +9,7 @@ create extension if not exists pgcrypto;
 -- Schema core: Stammdaten, die von allen Modulen geteilt werden
 -- ---------------------------------------------------------------------
 create schema if not exists core;
+create schema if not exists auth;
 create schema if not exists wein;
 
 -- Sparten (Betriebsbereiche): Hotel, Restaurant, Catering, ...
@@ -29,6 +30,66 @@ insert into core.sparten (code, name) values
     ('SPEZIALITAETEN', 'Spezialitaetenproduktion'),
     ('GLACE', 'Glaceherstellung'),
     ('STOERKOCH', 'Stoerkoch');
+
+-- ---------------------------------------------------------------------
+-- Schema auth: Benutzer, Rollen, 2FA
+-- ---------------------------------------------------------------------
+
+-- Rollen mit Flag, ob 2FA fuer diese Rolle Pflicht ist (Durchsetzung erfolgt
+-- im Auth-Dienst beim Login, nicht als DB-Constraint, siehe KONZEPT.md 9.1)
+create table auth.rollen (
+    id              uuid primary key default gen_random_uuid(),
+    code            text not null unique,
+    name            text not null,
+    erfordert_2fa   boolean not null default false
+);
+
+insert into auth.rollen (code, name, erfordert_2fa) values
+    ('ADMIN', 'Administration/Stammdaten-Pflege', true),
+    ('PREISLISTEN_FREIGABE', 'Preislisten-Freigabe', true),
+    ('EINKAUF', 'Einkauf', false),
+    ('SPARTEN_LESER', 'Lesezugriff je Sparte', false),
+    ('SERVICE_ACCOUNT', 'Technischer Zugriff (Webseite/Kassensystem)', false);
+
+-- Mitarbeitende-Logins. TOTP-Secret NIE im Klartext -> verschluesselt
+-- (z.B. via pgcrypto pgp_sym_encrypt mit Schluessel aus Vaultwarden/Env,
+-- nicht im gleichen Datensatz).
+create table auth.benutzer (
+    id                              uuid primary key default gen_random_uuid(),
+    email                           text not null unique,
+    passwort_hash                   text not null,
+    vorname                         text,
+    nachname                        text,
+    aktiv                           boolean not null default true,
+    zwei_faktor_aktiv               boolean not null default false,
+    zwei_faktor_secret_verschluesselt bytea,
+    zwei_faktor_aktiviert_am        timestamptz,
+    created_at                      timestamptz not null default now(),
+    updated_at                      timestamptz not null default now()
+);
+
+-- Rollenzuweisung, optional eingeschraenkt auf eine Sparte
+-- (sparte_id = null -> Rolle gilt fuer alle Sparten)
+create table auth.benutzer_rollen (
+    id          uuid primary key default gen_random_uuid(),
+    benutzer_id uuid not null references auth.benutzer(id) on delete cascade,
+    rolle_id    uuid not null references auth.rollen(id),
+    sparte_id   uuid references core.sparten(id),
+    created_at  timestamptz not null default now(),
+    unique (benutzer_id, rolle_id, sparte_id)
+);
+
+-- Gehashte Einmal-Codes fuer Geraeteverlust (2FA-Wiederherstellung)
+create table auth.zwei_faktor_backup_codes (
+    id            uuid primary key default gen_random_uuid(),
+    benutzer_id   uuid not null references auth.benutzer(id) on delete cascade,
+    code_hash     text not null,
+    verwendet_am  timestamptz,
+    created_at    timestamptz not null default now()
+);
+
+create index benutzer_rollen_benutzer_idx on auth.benutzer_rollen (benutzer_id);
+create index zwei_faktor_backup_codes_benutzer_idx on auth.zwei_faktor_backup_codes (benutzer_id);
 
 -- MwSt-Saetze mit Gueltigkeitszeitraum (Saetze aendern sich ueber die Zeit)
 create table core.mwst_saetze (

@@ -229,6 +229,7 @@ Kern:
 
 - `core` – Sparten, Produkte, Kategorien, Partner (Lieferant/Kunde/
   Dienstleister), Preislisten, MwSt
+- `auth` – Benutzer, Rollen, Rollenzuweisung je Sparte, 2FA (siehe 9.1/6.4)
 - `wein` – Zusatzattribute für Produkte vom Typ `WEIN`
 - `crm` – Kontaktpersonen, Aktivitäten/Historie zu `core.partner` (Phase 3,
   keine eigene Firmen-/Adresstabelle mehr – das ist bereits `core.partner`)
@@ -307,6 +308,20 @@ alte Zeile bekommt `gueltig_bis`, neue Zeile wird eingefügt).
 alter Wert, neuer Wert, wer, wann, Grund. Wird per Trigger automatisch
 befüllt – Mutation ist damit strukturell erzwungen, nicht optional.
 
+**`auth.rollen`** – Rollen (z. B. `ADMIN`, `PREISLISTEN_FREIGABE`,
+`EINKAUF`, `SPARTEN_LESER`, `SERVICE_ACCOUNT`) mit Flag `erfordert_2fa`.
+
+**`auth.benutzer`** – Mitarbeitende-Logins mit Passwort-Hash sowie
+`zwei_faktor_aktiv` und dem **verschlüsselt** abgelegten TOTP-Secret
+(nie im Klartext, siehe 9.1).
+
+**`auth.benutzer_rollen`** – Zuordnung Benutzer ↔ Rolle, optional
+eingeschränkt auf eine `sparte_id` (z. B. "Preislisten-Freigabe nur für
+Catering"; `sparte_id = null` heisst alle Sparten).
+
+**`auth.zwei_faktor_backup_codes`** – gehashte Einmal-Codes pro Benutzer
+für den Fall eines verlorenen 2FA-Geräts.
+
 ## 7. Preislogik im Detail (Wein-Beispiel)
 
 1. **Einkaufspreis / Kalkulationsbasis** liegt in `core.produkte.einkaufspreis`
@@ -353,6 +368,28 @@ Security, grob:
 - **Preislisten-Freigabe** (Verkaufspreise je Sparte): Sparten-Verantwortliche
 - **Lesezugriff** je Modul/Sparte: entsprechendes Personal
 - **Reine Leserechte** für Webseite/Kassensystem (technische Service-Accounts)
+
+### 9.1 Zwei-Faktor-Authentifizierung (2FA)
+
+- **Methode: TOTP** (zeitbasierter Einmalcode, RFC 6238) – kompatibel mit
+  Standard-Apps wie Google Authenticator, Microsoft Authenticator oder
+  Authy. Bewusst **kein SMS-2FA** (gilt als unsicherer, u. a. anfällig für
+  SIM-Swapping).
+- **Pflicht** für sicherheitskritische Rollen: Stammdaten-Pflege (Admin/
+  Einkauf) und Preislisten-Freigabe. **Empfohlen** für alle übrigen
+  Mitarbeitenden-Logins, **nicht** anwendbar auf technische
+  Service-Accounts (Webseite/Kassensystem – dort greifen stattdessen enge
+  API-Keys mit Leserecht statt eines Login mit 2FA).
+- **Verlust des Geräts:** einmalige, gehashte **Backup-Codes** beim
+  Einrichten der 2FA generieren (wie bei den meisten 2FA-Systemen üblich),
+  damit ein Zugriff nicht komplett verloren geht.
+- Das TOTP-Secret wird **verschlüsselt** in der Datenbank abgelegt (nie im
+  Klartext) – gleiches Prinzip wie schon bei den Lieferanten-Zugangsdaten in
+  Abschnitt 6.0. Die Durchsetzung "welche Rolle braucht 2FA" erfolgt im
+  Auth-Dienst beim Login (Anwendungslogik), nicht als starrer
+  Datenbank-Constraint, da sie mehrere Tabellen (Benutzer × Rollen)
+  gleichzeitig betrifft.
+- Siehe `auth`-Schema in Abschnitt 6.4 für die konkrete Tabellenstruktur.
 
 ## 10. Roadmap
 
