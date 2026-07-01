@@ -1,6 +1,6 @@
 # Hoberg Gastro – Konzept für eine modulare Betriebssoftware
 
-Status: Entwurf v1 | Datum: 2026-07-01
+Status: Entwurf v2 | Datum: 2026-07-01
 
 ## 1. Ausgangslage
 
@@ -15,6 +15,24 @@ Erster konkreter Baustein: **Produktdatenbank Wein**, inkl. unterschiedlicher
 Verkaufspreise pro Sparte (Restaurant, Catering, …) und einer sauberen
 **Preis-Mutation** ausgehend von den Stammdaten.
 
+**Zusätzliche Vorgabe:** Das gesamte System muss auf einem **eigenen Server**
+(z. B. bei Hosttech) betrieben werden können – keine Abhängigkeit von einem
+Cloud-Anbieter, der die Daten ausserhalb der eigenen Kontrolle hält. Inklusive
+einer verlässlichen **Backup-Strategie für alle Daten, Tabellen und die
+gesamte Datenbank** (siehe Abschnitt 12). Der ursprüngliche Ansatz
+(Supabase als Cloud-Dienst) wird deshalb durch einen **self-hosted-Stack**
+ersetzt, der auf jedem Linux-vServer/Managed-Server mit Root-Zugriff läuft –
+funktional bleibt das Konzept (Stammdaten, Sparten, Preislisten, Module)
+unverändert, nur die Betriebsumgebung ändert sich.
+
+> Annahme für dieses Konzept: Hosttech **vServer oder Managed Server mit
+> Root-/SSH-Zugriff** (Linux, Docker-fähig). Klassisches Shared-Hosting
+> (nur PHP/MySQL über Plesk, kein Root, kein Docker) reicht für PostgreSQL,
+> eigene Hintergrunddienste und automatisierte Backups **nicht** aus – dort
+> müsste der Unterbau grundlegend auf PHP/MariaDB umgebaut werden. Falls das
+> der tatsächlich verfügbare Hosttech-Plan ist, bitte Rückmeldung geben,
+> dann wird dieser Abschnitt angepasst.
+
 ## 2. Architekturprinzipien
 
 1. **Stammdaten-first, Single Source of Truth** – ein Produkt (z. B. ein Wein)
@@ -25,9 +43,9 @@ Verkaufspreise pro Sparte (Restaurant, Catering, …) und einer sauberen
    Das erlaubt sparten-spezifische Preise/Sichtbarkeit bei gemeinsamen
    Produktdaten.
 3. **API-first / Headless.** Jedes Modul (inkl. bestehendes Menükarten-Tool,
-   künftige Website, Kassensystem) spricht über eine gemeinsame API
-   (Postgres/Supabase REST & GraphQL + Views) mit der Datenbank. Kein Modul
-   hält eigene Kopien von Produkt- oder Preisdaten.
+   künftige Website, Kassensystem) spricht über eine gemeinsame, selbst
+   gehostete REST-API mit der Datenbank. Kein Modul hält eigene Kopien von
+   Produkt- oder Preisdaten.
 4. **Erweiterbar statt starr.** Neue Produktarten (Speisen, Zutaten,
    Glaceartikel, Handelswaren) hängen sich als **Zusatztabellen** an eine
    generische `produkte`-Kerntabelle – analog zum Wein-Beispiel. Neue Module
@@ -66,16 +84,33 @@ erweitert.
 
 ## 4. Systemarchitektur (High Level)
 
+Alles läuft als **Docker-Compose-Stack auf einem einzigen (Hosttech-)Server**
+– keine externen Cloud-Abhängigkeiten für Kerndaten:
+
 ```mermaid
 flowchart TB
-    subgraph DB["Zentrale Datenbank (Postgres, z.B. Supabase)"]
-        Core["Kern-Schema:\nsparten, produkte, preislisten,\nadressen, lieferanten"]
-        Wein["wein.weine\n(Zusatzattribute)"]
-        Weitere["weitere Zusatzschemas:\nrezepte, lager, crm, hotel, pos, ..."]
-    end
+    subgraph Server["Eigener Server (z.B. Hosttech vServer/Managed Server)"]
+        subgraph DB["PostgreSQL (Docker-Container, self-hosted)"]
+            Core["Kern-Schema:\nsparten, produkte, preislisten,\nadressen, lieferanten"]
+            Wein["wein.weine\n(Zusatzattribute)"]
+            Weitere["weitere Zusatzschemas:\nrezepte, lager, crm, hotel, pos, ..."]
+        end
 
-    API["Auto-generierte REST/GraphQL API\n+ Views + RLS pro Sparte/Rolle"]
-    Edge["Edge Functions:\nPDF-Erstellung, Preis-Export,\nAutomatisierungs-Jobs"]
+        API["REST-API (PostgREST, self-hosted)\n+ Views + RLS pro Sparte/Rolle"]
+        Auth["Auth-Dienst (eigener JWT-Login)"]
+        Jobs["Automatisierungs-/PDF-Dienst\n(Node.js, eigener Container)"]
+        Proxy["Reverse Proxy (Nginx/Traefik)\n+ TLS (Let's Encrypt)"]
+        Backup["Backup-Job (Cron-Container:\npg_dump + rclone/rsync offsite)"]
+
+        Core --- Wein
+        Core --- Weitere
+        DB --> API
+        DB --> Jobs
+        Auth --> API
+        Proxy --> API
+        Proxy --> Auth
+        DB --> Backup
+    end
 
     Menu["Menükarten-Modul\n(bestehend, wird umgehängt)"]
     Web["Webseite"]
@@ -83,25 +118,25 @@ flowchart TB
     Einkauf["Einkauf/Verkauf-UI"]
     Hotel["Hotelbuchungs-UI"]
     Neu["weitere künftige Module"]
+    Offsite["Offsite-Backup-Speicher\n(zweiter Ort/Anbieter)"]
 
-    Core --- Wein
-    Core --- Weitere
-    DB --> API
-    DB --> Edge
-    API --> Menu
-    API --> Web
-    API --> POS
-    API --> Einkauf
-    API --> Hotel
-    API --> Neu
-    Edge --> Menu
-    Edge --> Web
+    Proxy --> Menu
+    Proxy --> Web
+    Proxy --> POS
+    Proxy --> Einkauf
+    Proxy --> Hotel
+    Proxy --> Neu
+    Jobs --> Menu
+    Jobs --> Web
+    Backup --> Offsite
 ```
 
 Jedes Modul ist ein eigenes Frontend/Service, aber es gibt **eine** Datenbank
-und **eine** API-Schicht. Damit landet z. B. eine Preisänderung in den
-Stammdaten automatisch in Menükarte, Webseite und (später) im Kassensystem –
-ohne manuellen Doppelaufwand.
+und **eine** API-Schicht, beide auf demselben Server. Damit landet z. B. eine
+Preisänderung in den Stammdaten automatisch in Menükarte, Webseite und
+(später) im Kassensystem – ohne manuellen Doppelaufwand. Der Server ist
+bewusst so aufgebaut, dass ein Umzug auf einen anderen Hoster jederzeit
+möglich bleibt (reines Docker Compose, keine proprietären Dienste).
 
 ## 5. Sparten-Konzept
 
@@ -218,7 +253,7 @@ befüllt – Mutation ist damit strukturell erzwungen, nicht optional.
 
 ## 8. Schnittstellen & Automatisierung
 
-- **Interne API:** Supabase-generierte REST/GraphQL-API auf `core.*`-Tabellen
+- **Interne API:** self-hosted REST-API (PostgREST) auf `core.*`-Tabellen
   und -Views, Zugriff über Row Level Security nach Sparte/Rolle gesteuert.
 - **Bestehendes Menükarten-Modul (Bolt.new):** wird so umgehängt, dass es
   Produkte/Preise über die gemeinsame API aus `core.produkte` +
@@ -234,7 +269,8 @@ befüllt – Mutation ist damit strukturell erzwungen, nicht optional.
 
 ## 9. Rollen & Berechtigungen (Kurzform)
 
-Rollenkonzept über Supabase Auth + RLS, grob:
+Rollenkonzept über eigenen Auth-Dienst (JWT-Login) + Postgres Row Level
+Security, grob:
 
 - **Stammdaten-Pflege** (Einkaufspreise, Produktdaten): Einkauf/Admin
 - **Preislisten-Freigabe** (Verkaufspreise je Sparte): Sparten-Verantwortliche
@@ -243,8 +279,12 @@ Rollenkonzept über Supabase Auth + RLS, grob:
 
 ## 10. Roadmap
 
+0. **Phase 0 (Vorbereitung):** Server bei Hosttech einrichten (vServer/Managed
+   Server, Root-Zugriff), Docker + Docker Compose, Firewall, TLS, Backup-Job
+   gemäss Abschnitt 12 – **bevor** die erste Fachanwendung produktiv geht.
 1. **Phase 1 (jetzt):** Kern-Stammdaten + Produktdatenbank Wein +
-   Preislisten Restaurant/Catering + Preis-Historie (siehe SQL-Datei).
+   Preislisten Restaurant/Catering + Preis-Historie (siehe SQL-Datei),
+   lokal/auf Testserver aufsetzen und Backup-Restore einmal durchspielen.
 2. **Phase 2:** Bestehendes Menükarten-Modul auf die neue Datenbank umstellen
    (statt Eigendaten), inkl. automatischem PDF-Export aus Preislisten.
 3. **Phase 3:** Einkauf, Lager, CRM/Adressverwaltung.
@@ -253,14 +293,77 @@ Rollenkonzept über Supabase Auth + RLS, grob:
 5. **Laufend:** Automatisierungs-Hub ausbauen (Bestellvorschläge,
    Kassenabgleich, Website-Sync).
 
-## 11. Technologie-Empfehlung
+## 11. Technologie-Empfehlung (self-hosted)
 
-**Postgres via Supabase**: eine Datenbank für alle Module, automatisch
-generierte REST/GraphQL-API, Row Level Security für die Sparten-/Rollentrennung,
-Auth, Storage (Produktbilder, PDFs) und Edge Functions (PDF-Erstellung,
-Automatisierungsjobs) aus einer Hand. Das bestehende Bolt.new-Menükarten-Tool
-lässt sich darauf umstellen, ohne die UI verwerfen zu müssen – nur die
-Datenquelle wechselt von "eigene Tabelle" zu "gemeinsame Stammdaten".
+Ziel: gleiche Vorteile wie ein Cloud-Backend (eine DB, automatisch generierte
+API, Rollen/Rechte, Auth, Dateiablage, Automatisierung), aber **vollständig
+auf dem eigenen Server** und ohne Bindung an einen einzelnen Anbieter:
 
-Konkreter nächster Schritt: Supabase-Projekt für Hoberg Gastro anlegen und
-`db/phase1_stammdaten_wein_preise.sql` als erste Migration einspielen.
+| Baustein | Wahl | Begründung |
+|---|---|---|
+| Datenbank | **PostgreSQL** (Docker-Container) | identisch zum bisherigen Schema, keine Anpassung der SQL-Datei nötig, sehr gute Backup-Werkzeuge |
+| API-Schicht | **PostgREST** (self-hosted, Open Source) | generiert automatisch eine REST-API aus dem Postgres-Schema inkl. Row Level Security – gleiches Prinzip wie zuvor, aber ohne Cloud-Anbieter |
+| Auth | eigener, schlanker JWT-Auth-Dienst (Node.js) oder Postgres-Rollen direkt | reicht für Mitarbeitendenanzahl eines Betriebs dieser Grösse; Keycloak als Option, falls später viele Systeme/SSO gebraucht werden |
+| Automatisierung/PDF | eigener **Node.js-Dienst** (Docker-Container) | übernimmt PDF-Erstellung (wie bisher im Menükarten-Modul), Webhooks, geplante Jobs |
+| Reverse Proxy/TLS | **Nginx** oder **Traefik** + Let's Encrypt | ein Einstiegspunkt für alle Module, automatisches HTTPS-Zertifikat |
+| Dateiablage (Bilder, PDFs) | lokales Docker-Volume, bei Bedarf später **MinIO** (self-hosted, S3-kompatibel) | einfach im Backup mit einzubeziehen, kein externer Objektspeicher nötig |
+| Deployment | **Docker Compose** auf dem Hosttech-Server | ein `docker-compose.yml` beschreibt den ganzen Stack, reproduzierbar, portierbar auf jeden anderen Server |
+| Backup | siehe Abschnitt 12 | zentral, automatisiert, mit Offsite-Kopie |
+
+Das bestehende Bolt.new-Menükarten-Tool lässt sich darauf umstellen, ohne die
+UI verwerfen zu müssen – nur die Datenquelle wechselt von "eigene
+Cloud-Tabelle" zu "eigene PostgreSQL-Instanz über PostgREST".
+
+Konkreter nächster Schritt (Programmierung, nach Freigabe dieses Konzepts):
+Server-Grundgerüst (Docker Compose mit Postgres + PostgREST + Nginx + Backup-
+Job) aufsetzen und `db/phase1_stammdaten_wein_preise.sql` als erste Migration
+einspielen.
+
+## 12. Hosting & Backup-Konzept
+
+### 12.1 Serveranforderungen
+
+- Linux-Server mit Root-/SSH-Zugriff (Hosttech vServer oder Managed Server),
+  Docker + Docker Compose installiert.
+- Ausreichend Speicherplatz für Datenbank **und** Backups (Faustregel:
+  mindestens das 3–4-fache der erwarteten DB-Grösse einplanen).
+- Firewall (nur Port 443/80 und SSH offen), SSH nur mit Schlüssel (kein
+  Passwort-Login), automatische Sicherheitsupdates des Betriebssystems.
+- Getrennte Umgebungen: mind. **Produktion**, empfohlen zusätzlich eine
+  **Test-/Staging-Instanz** auf demselben oder einem separaten Server, um
+  neue Module/Migrationen vorab zu prüfen.
+
+### 12.2 Backup-Strategie (3-2-1-Prinzip)
+
+**3 Kopien, 2 verschiedene Medien/Orte, 1 davon offsite:**
+
+1. **Automatischer täglicher Dump** der gesamten PostgreSQL-Datenbank
+   (`pg_dump` im Custom-Format, komprimiert) per Cron-Job/Cron-Container,
+   inkl. Zeitstempel im Dateinamen.
+2. **Dateiablage sichern** (Produktbilder, erzeugte PDFs, Konfigurationen)
+   zusammen mit dem DB-Dump in einem Archiv.
+3. **Offsite-Kopie**: automatischer Transfer (rclone/rsync) des Backups auf
+   einen zweiten Ort – z. B. Hosttech-Zusatzprodukt "Backup-Space", einen
+   zweiten Server oder einen externen S3-kompatiblen Speicher. Backups
+   dürfen **nicht ausschliesslich** auf demselben physischen Server liegen
+   wie die Live-Datenbank (sonst kein Schutz bei Hardware-/Serverausfall).
+4. **Aufbewahrung/Rotation** (Generationsprinzip): z. B. 7 tägliche,
+   4 wöchentliche, 12 monatliche Stände – ältere Stände werden automatisch
+   gelöscht, damit der Speicher nicht unbegrenzt wächst.
+5. **Restore-Test**: mindestens einmal im Quartal ein Backup tatsächlich in
+   eine Testumgebung zurückspielen und prüfen – ein Backup zählt erst, wenn
+   die Wiederherstellung nachweislich funktioniert.
+6. **Alarmierung**: schlägt der Backup-Job fehl (z. B. Datenbank nicht
+   erreichbar, Transfer schlägt fehl), erfolgt automatisch eine
+   Benachrichtigung (E-Mail) – Backups dürfen nicht "still" ausfallen.
+7. **Optional für später (geringeres Datenverlustrisiko):** kontinuierliche
+   WAL-Archivierung (z. B. mit `pgBackRest` oder `wal-g`) für
+   Point-in-Time-Recovery, falls ein Tagesabstand zwischen Backups nicht mehr
+   ausreicht.
+
+### 12.3 Umzugsfähigkeit
+
+Da der gesamte Stack als Docker Compose beschrieben ist und Backups
+vollständige `pg_dump`-Stände sind, ist ein Wechsel des Hosting-Anbieters
+(z. B. weg von oder zu Hosttech) jederzeit möglich: Server neu aufsetzen,
+Docker Compose starten, letzten Backup-Stand einspielen.

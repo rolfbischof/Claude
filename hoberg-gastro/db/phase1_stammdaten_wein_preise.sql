@@ -1,6 +1,7 @@
 -- Hoberg Gastro – Phase 1: Stammdaten-Kern, Produktdatenbank Wein, Preislisten
 -- Siehe ../KONZEPT.md Abschnitt 6/7 fuer die Erklaerung.
--- Zielsystem: Postgres (Supabase)
+-- Zielsystem: PostgreSQL, self-hosted (z.B. Hosttech vServer/Managed Server,
+-- Betrieb als Docker-Container gemaess ../KONZEPT.md Abschnitt 11/12).
 
 create extension if not exists pgcrypto;
 
