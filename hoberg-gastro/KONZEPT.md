@@ -523,3 +523,26 @@ Da der gesamte Stack als Docker Compose beschrieben ist und Backups
 vollständige `pg_dump`-Stände sind, ist ein Wechsel des Hosting-Anbieters
 (z. B. weg von oder zu Hosttech) jederzeit möglich: Server neu aufsetzen,
 Docker Compose starten, letzten Backup-Stand einspielen.
+
+### 12.4 Bestell-Checkliste (Hosttech vServer "Foggy")
+
+Konkrete Auswahl für die Bestellung im myhosttech-Kundencenter (Angaben
+prüfen, da sich Preise/Bezeichnungen ändern können):
+
+| Feld | Auswahl |
+|---|---|
+| Produkt | vServer **"Foggy"** – **nicht** "Managed vServer/Managed Cloud Server Foggy" (root-lose Variante, für unseren Stack ungeeignet, siehe 12.1) |
+| Rechenzentrum | Schweiz (DATAROCK), Standard bei hosttech.ch |
+| Ressourcen | 4 vCPU / 4 GB RAM / 100 GB NVMe-SSD, Traffic unlimitiert – Startgrösse, ab CHF 19.90/Monat, jederzeit ohne Migration hochstufbar |
+| Betriebssystem | **Ubuntu Server 24.04 LTS** (beste Docker/Coolify-Kompatibilität), alternativ Debian 12/13 |
+| Zugriffsart | Voller **Root-Zugriff** (bei "Foggy" Standard) |
+| Installation | Neuinstallation (vorinstalliert geliefert) |
+| IPv4/IPv6 | 1 IPv4 inklusive (reicht für einen zentralen Reverse Proxy) + IPv6 /64 automatisch dabei |
+| I/O-Modus | Start mit "Dynamic" (Standard), bei Bedarf später im Kundencenter auf "Aggressive" umstellen (~4× mehr SSD-Durchsatz) |
+| Vertragslaufzeit | Monatlich kündbar, falls als Option angeboten – Setup-Gebühr ist gratis |
+| Zusatzprodukt (optional, auch nachträglich zubuchbar) | "Backup & Protect", 35 GB, ca. CHF 4.90/Monat, für die Offsite-Backup-Kopie |
+
+**Direkt nach Lieferung** (erster Schritt, keine Bestelloption): SSH-Key
+statt Passwort einrichten und Passwort-Login deaktivieren, Firewall (nur
+22/80/443 offen), automatische Sicherheitsupdates aktivieren, danach Docker
++ Coolify installieren.
