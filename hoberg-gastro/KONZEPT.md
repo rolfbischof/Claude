@@ -43,11 +43,13 @@ unverändert, nur die Betriebsumgebung ändert sich.
 >   aber die eigene Offsite-Sicherung aus Abschnitt 12 nicht (liegt sonst auf
 >   derselben Infrastruktur wie die Live-Daten – kein Schutz bei
 >   Anbieterausfall).
-> - Grössenordnung für den Start: ein Einstiegs- bis Mitteltarif (z. B.
->   2 vCPU / 4–8 GB RAM / 80–160 GB SSD) reicht für Postgres + PostgREST +
->   Auth-Dienst + Nginx im Betrieb dieser Grösse; genaue Tarife/Namen bitte
->   aktuell auf hosttech.ch/vserver prüfen, da sich Staffelungen ändern
->   können.
+> - Grössenordnung für den Start: die Hosttech-Cloud-Server-Linie "Foggy"
+>   (4 vCPU / 4 GB RAM / 100 GB NVMe-SSD, ab ca. CHF 19.90/Monat) reicht für
+>   Postgres + PostgREST + Auth-Dienst + Nginx + Coolify im Betrieb dieser
+>   Grösse. Lässt sich jederzeit ohne Datenmigration auf die nächste Stufe
+>   hochstufen (Details Abschnitt 12.1) – genaue Tarife/Namen bitte aktuell
+>   im [Serverkonfigurator](https://www.hosttech.ch/serverkonfigurator/)
+>   prüfen, da sich Staffelungen ändern können.
 >
 > Sollte stattdessen nur klassisches Shared-Hosting verfügbar sein (kein
 > Root, kein Docker), müsste der technische Unterbau grundlegend auf
@@ -391,12 +393,18 @@ Das bestehende Bolt.new-Menükarten-Tool lässt sich darauf umstellen, ohne die
 UI verwerfen zu müssen – nur die Datenquelle wechselt von "eigene
 Cloud-Tabelle" zu "eigene PostgreSQL-Instanz über PostgREST".
 
-**Offener Punkt:** Auch mit Coolify bleibt die Basis-Pflege des Servers
-(OS-Sicherheitsupdates, Coolify-Updates, Reaktion auf Monitoring-Alarme) eine
-wiederkehrende Aufgabe, die jemand konkret übernehmen muss – das entscheidet
-massgeblich, wie "einfach" sich der Betrieb für Hoberg tatsächlich anfühlt.
-Muss vor dem Produktivbetrieb geklärt werden (Wartungsvertrag/Retainer,
-internes Team oder anderweitig).
+**Geklärt: Wer pflegt die Basis (OS-Updates, Coolify-Updates, Alarme)?**
+Bei Hosttech ist das kein Sowohl-als-auch: Die "Managed"-Angebote (Managed
+Server/Managed vServer, 24/7-Betreuung durch Hosttech) laufen **ohne
+Root-Zugriff** über ein Plesk-Panel für klassische PHP/MySQL-Anwendungen –
+Docker, PostgreSQL, PostgREST und Coolify laufen dort **nicht**, weil dafür
+Root nötig ist. Eine "Hosttech verwaltet, wir behalten unseren Stack"-Option
+gibt es bei Hosttech nicht. Praktikabler Weg: Root-vServer bei Hosttech
+(liefert Infrastruktur inkl. automatischem Hardware-Failover), und die
+Software-Pflege wird entweder von uns übernommen **oder an einen externen
+Managed-Ops-Dienstleister** vergeben, der auf diesem Root-Server arbeitet
+(separater Dienstleister, nicht Hosttech). Diese Entscheidung (wer konkret)
+sollte vor dem Produktivbetrieb getroffen werden.
 
 Konkreter nächster Schritt (Programmierung, nach Freigabe dieses Konzepts):
 Server-Grundgerüst (Coolify auf Hosttech-vServer, darunter Postgres +
@@ -408,23 +416,33 @@ PostgREST + Nginx + Backup-Job) aufsetzen und
 ### 12.1 Serveranforderungen
 
 - Linux-Server mit vollem Root-/SSH-Zugriff (empfohlen: **Hosttech
-  vServer/Cloud Server**, siehe Empfehlung in Abschnitt 1 – nicht der
-  "Managed vServer" ohne Root und nicht klassisches Shared-Hosting), Docker +
-  Docker Compose installiert, darüber **Coolify** als Verwaltungsebene
-  (siehe Abschnitt 11).
-- **Dimensionierung:** eine Stufe über dem Minimum wählen (Richtwert: 4 vCPU /
-  8 GB RAM / NVMe-SSD), da DB, API, Auth, PDF-Dienst, Reverse Proxy,
-  Vaultwarden und Coolify selbst gleichzeitig laufen – wichtig für "stabil
-  und schnell", damit die Anwendung sich für die Mitarbeitenden nicht zäh
-  anfühlt.
+  vServer/Cloud Server**, Linie "Foggy" als Startgrösse – 4 vCPU/4 GB RAM/
+  100 GB NVMe-SSD – siehe Empfehlung in Abschnitt 1; **nicht** der "Managed
+  vServer" ohne Root und nicht klassisches Shared-Hosting), Docker + Docker
+  Compose installiert, darüber **Coolify** als Verwaltungsebene (Abschnitt 11).
+- **Skalierbarkeit:** Hosttech erlaubt jederzeit ein Hochstufen auf die
+  nächstgrössere vServer-Stufe im Kundencenter (mehr vCPU/RAM/SSD) **ohne
+  Datenmigration** – lediglich ein geplanter Neustart zu einem gewählten
+  Zeitpunkt. Zusätzlich lässt sich unabhängig davon der I/O-Modus von
+  "Dynamic" (Standard) auf "Aggressive" (~4× mehr SSD-Durchsatz/IOPS)
+  umstellen, jederzeit, ohne Stufenwechsel – erster Hebel, wenn die
+  Datenbank unter Last spürbar langsamer wird, bevor man die ganze
+  Server-Stufe wechselt.
 - Hosttechs standardmässiges tägliches Voll-Backup (7 Tage Aufbewahrung) kann
   als zusätzliche Sicherheitsebene mitgebucht werden, ersetzt aber die
-  eigene Offsite-Sicherung in 12.2 nicht.
+  eigene Offsite-Sicherung in 12.2 nicht. Für die Offsite-Kopie selbst bietet
+  sich alternativ/ergänzend Hosttechs **"Backup & Protect"** an (Schweizer
+  ISO-zertifiziertes Rechenzentrum, AES-256-verschlüsselt, KI-Malware-Schutz,
+  ab CHF 4.90/Monat für 35 GB, grössere Stufen verfügbar) statt eines
+  externen S3-Anbieters, falls die Daten lieber in der Schweiz bei Hosttech
+  selbst bleiben sollen als bei einem Drittanbieter.
 - Ausreichend Speicherplatz für Datenbank **und** Backups (Faustregel:
   mindestens das 3–4-fache der erwarteten DB-Grösse einplanen).
 - **Monitoring:** Uptime Kuma (self-hosted) oder Coolifys Monitoring
   überwacht Erreichbarkeit der Dienste und Backup-Jobs, mit Alarmierung bei
-  Ausfall.
+  Ausfall. Ein Hosttech-eigenes Monitoring-Produkt gibt es nur im
+  "Managed"-Tarif – der aber wie oben beschrieben keinen Root-Zugriff erlaubt
+  und damit für unseren Stack nicht in Frage kommt.
 - Firewall (nur Port 443/80 und SSH offen), SSH nur mit Schlüssel (kein
   Passwort-Login), automatische Sicherheitsupdates des Betriebssystems.
 - Getrennte Umgebungen: mind. **Produktion**, empfohlen zusätzlich eine
