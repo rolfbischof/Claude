@@ -40,20 +40,62 @@ create table core.mwst_saetze (
     created_at  timestamptz not null default now()
 );
 
--- Lieferanten (u.a. Weinhaendler/Winzer)
-create table core.lieferanten (
-    id          uuid primary key default gen_random_uuid(),
-    name        text not null,
-    adresse     text,
-    plz_ort     text,
-    land        text,
-    kontakt     text,
-    email       text,
-    telefon     text,
-    aktiv       boolean not null default true,
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now()
+-- Partnerkategorien: gruppiert core.partner fachlich (aus realer Hoberg-
+-- Lieferantenliste uebernommen: Weine, Getraenke, Lebensmittel, Buchhaltung, ...)
+create table core.partner_kategorien (
+    id      uuid primary key default gen_random_uuid(),
+    code    text not null unique,
+    name    text not null
 );
+
+insert into core.partner_kategorien (code, name) values
+    ('WEINE', 'Weine'),
+    ('GETRAENKE', 'Getraenke allgemein'),
+    ('LEBENSMITTEL', 'Lebensmittel'),
+    ('BUCHHALTUNG', 'Buchhaltung'),
+    ('KASSENSYSTEM', 'Kassensystem'),
+    ('HOTEL_PLATTFORM', 'Hotel-/Buchungsplattform'),
+    ('REINIGUNG_WAESCHE', 'Reinigung/Waescherei'),
+    ('DIENSTLEISTUNG', 'Sonstige Dienstleistung');
+
+-- Partner: vereinigt Lieferanten, Kunden und Dienstleister in einem Register
+-- (nicht getrennt je Modul), da dieselbe Firma je nach Kontext Lieferant UND
+-- Kunde sein kann. Rollenflags statt getrennter Tabellen -> ein einziger
+-- Datensatz pro Firma/Kontakt, wiederverwendbar in Einkauf, CRM, Verkauf.
+create table core.partner (
+    id                          uuid primary key default gen_random_uuid(),
+    kurzname                    text not null,
+    firma                       text not null,
+    kategorie_id                uuid references core.partner_kategorien(id),
+    strasse                     text,
+    hausnummer                  text,
+    plz                         text,
+    ort                         text,
+    land                        text not null default 'CH',
+    ansprechperson_vorname      text,
+    ansprechperson_nachname     text,
+    telefon                     text,
+    mobil                       text,
+    email                       text,
+    webseite                    text,
+    kundennummer_beim_partner   text,
+    ist_kunde                   boolean not null default false,
+    ist_lieferant                boolean not null default false,
+    ist_dienstleister            boolean not null default false,
+    bestellkanal                text,
+    online_shop_url              text,
+    -- Bewusst KEINE Zugangsdaten (Benutzername/Passwort) hier ablegen:
+    -- Verweis auf Eintrag in separatem Secrets-Manager (z.B. Vaultwarden,
+    -- siehe KONZEPT.md 11/6.5), niemals das Geheimnis selbst in der Business-DB.
+    zugangsdaten_hinterlegt      boolean not null default false,
+    zugangsdaten_verweis         text,
+    notizen                      text,
+    aktiv                        boolean not null default true,
+    created_at                   timestamptz not null default now(),
+    updated_at                   timestamptz not null default now()
+);
+
+create index partner_kategorie_idx on core.partner (kategorie_id);
 
 -- Produktkategorien, hierarchisch (Getraenke > Wein > Rotwein)
 create table core.produkt_kategorien (
@@ -74,7 +116,7 @@ create table core.produkte (
     kategorie_id    uuid references core.produkt_kategorien(id),
     bezeichnung     text not null,
     kurzbeschreibung text,
-    lieferant_id    uuid references core.lieferanten(id),
+    lieferant_id    uuid references core.partner(id),
     einkaufspreis   numeric(10,2) not null default 0,
     einheit         text not null default 'Stk',
     mwst_satz_id    uuid references core.mwst_saetze(id),

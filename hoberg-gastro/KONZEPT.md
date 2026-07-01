@@ -1,6 +1,6 @@
 # Hoberg Gastro – Konzept für eine modulare Betriebssoftware
 
-Status: Entwurf v2 | Datum: 2026-07-01
+Status: Entwurf v3 | Datum: 2026-07-01
 
 ## 1. Ausgangslage
 
@@ -88,16 +88,16 @@ erweitert.
 
 | Modul | Zweck | nutzt Kern-Entitäten | eigene Zusatzdaten (Beispiele) |
 |---|---|---|---|
-| **Stammdaten** (Kern) | zentrale Wahrheit für Produkte, Sparten, Lieferanten, Adressen | – | Sparten, Kategorien, Einheiten, MwSt-Sätze |
+| **Stammdaten** (Kern) | zentrale Wahrheit für Produkte, Sparten, Partner (Lieferanten/Kunden/Dienstleister) | – | Sparten, Kategorien, Einheiten, MwSt-Sätze |
 | **Produktverwaltung** | Erfassung/Pflege aller Artikel (Wein, Speisen, Zutaten, Glace, Handelsware) | Produkte | typ-spezifische Zusatztabellen (`weine`, später `speisen`, `glace_artikel`, …) |
 | **Preislisten** | sparten-spezifische Verkaufspreise, automatische Ableitung aus Kalkulation | Produkte, Sparten | Preislisten, Preislistenpositionen, Preis-Historie, Kalkulationsregeln |
-| **Einkauf** | Bestellungen, Wareneingang, Einkaufspreise | Produkte, Lieferanten | Bestellungen, Bestellpositionen, Wareneingänge |
-| **Verkauf** | Angebote, Rechnungen, Aufträge (Catering-Events, Bankette) | Produkte, Preislisten, Adressen | Aufträge, Auftragspositionen, Rechnungen |
-| **CRM / Adressverwaltung** | Kunden, Lieferanten, Interessenten, Kontakthistorie | Adressen | Firmen, Kontakte, Aktivitäten |
-| **Hotelbuchungen** | Zimmerverfügbarkeit, Reservationen | Adressen, Preislisten (Zimmerkategorien als Produkte) | Zimmer, Reservationen, Belegungspläne |
+| **Einkauf** | Bestellungen, Wareneingang, Einkaufspreise | Produkte, Partner (Rolle Lieferant) | Bestellungen, Bestellpositionen, Wareneingänge |
+| **Verkauf** | Angebote, Rechnungen, Aufträge (Catering-Events, Bankette) | Produkte, Preislisten, Partner (Rolle Kunde) | Aufträge, Auftragspositionen, Rechnungen |
+| **CRM / Adressverwaltung** | Kunden, Lieferanten, Interessenten, Kontakthistorie | Partner | Kontaktpersonen, Aktivitäten (Partner-Rollenflags decken Kunde/Lieferant/Dienstleister ab) |
+| **Hotelbuchungen** | Zimmerverfügbarkeit, Reservationen | Partner (Rolle Kunde), Preislisten (Zimmerkategorien als Produkte) | Zimmer, Reservationen, Belegungspläne |
 | **Rezeptverwaltung** | Rezepte, Kalkulation über Zutatenpreise | Produkte (als Zutaten) | Rezepte, Rezeptpositionen, Nährwert-/Allergenangaben |
 | **Lagerbewirtschaftung** | Bestände, Inventur, Mindestbestände je Standort/Sparte | Produkte, Sparten | Lagerorte, Lagerbestände, Bewegungen |
-| **Interne Kommunikation** | Aufgaben, Schichtinfos, Ankündigungen | Adressen (Mitarbeitende) | Nachrichten, Aufgaben |
+| **Interne Kommunikation** | Aufgaben, Schichtinfos, Ankündigungen | Partner (Mitarbeitende, falls so geführt) | Nachrichten, Aufgaben |
 | **Kassensystem-Anbindung** | Verkaufsdaten importieren, Preise exportieren | Produkte, Preislisten | Mapping-Tabelle POS-Artikel ↔ Produkt, Verkaufsbelege |
 | **Webseitenverwaltung / Menükarten** | öffentliche Darstellung, PDF-Export (bereits vorhanden) | Produkte, Preislisten | Menüaufbau/Layout, CI-Vorlagen |
 | **Automatisierung / Integration Hub** | Schnittstellen, Webhooks, wiederkehrende Jobs | alle | API-Keys, Webhook-Log, Job-Historie |
@@ -121,6 +121,7 @@ flowchart TB
         Jobs["Automatisierungs-/PDF-Dienst\n(Node.js, eigener Container)"]
         Proxy["Reverse Proxy (Nginx/Traefik)\n+ TLS (Let's Encrypt)"]
         Backup["Backup-Job (Cron-Container:\npg_dump + rclone/rsync offsite)"]
+        Vault["Vaultwarden\n(Zugangsdaten Lieferanten/Onlineshops)"]
 
         Core --- Wein
         Core --- Weitere
@@ -129,7 +130,9 @@ flowchart TB
         Auth --> API
         Proxy --> API
         Proxy --> Auth
+        Proxy --> Vault
         DB --> Backup
+        Vault --> Backup
     end
 
     Menu["Menükarten-Modul\n(bestehend, wird umgehängt)"]
@@ -177,16 +180,58 @@ ohne dass er drei separate Produktstämme braucht.
 
 ## 6. Datenbankkonzept
 
+### 6.0 Abgleich mit realer Hoberg-Lieferantenliste
+
+Die vorhandene Excel-Liste "Lieferanten" (Weine, Getränke allgemein,
+Lebensmittel, Buchhaltung, Kassensystem, Hotel-Plattformen,
+Reinigung/Wäscherei, Dienstleister) hat das Datenmodell an zwei Stellen
+konkret geschärft:
+
+1. **Lieferant und Kunde sind in der Praxis dieselbe Art von Datensatz.**
+   Die Liste führt Firmen mit den Spalten "Kunde" und "Lieferant" als
+   Rollen-Flags auf derselben Zeile (z. B. ist Booking.com kein
+   Weinlieferant, sondern eine Buchungsplattform; die Reinigungsfirma ist
+   Dienstleister, kein Wareneinkauf). Ursprünglich waren `core.lieferanten`
+   (Phase 1) und eine CRM-Adresstabelle (Phase 3) getrennt geplant – das
+   hätte dieselbe Firma doppelt erfasst und würde dem eigenen Prinzip
+   "Single Source of Truth" widersprechen. **Anpassung:** ein gemeinsames
+   Register `core.partner` mit Rollenflags `ist_kunde` / `ist_lieferant` /
+   `ist_dienstleister` statt getrennter Tabellen pro Modul. Einkauf,
+   Rezeptverwaltung und später CRM/Verkauf greifen alle auf dieselben
+   Partner-Datensätze zu.
+2. **Adressfelder differenzierter als ursprünglich angenommen:** Strasse und
+   Hausnummer getrennt, PLZ/Ort getrennt, zusätzlich Land (in der Liste
+   z. B. ein deutscher Lieferant), zwei Telefonnummern (Telefon/Mobil),
+   eigene Ansprechperson (Vor-/Nachname), Kundennummer beim Lieferanten,
+   Webseite, Online-Shop-URL und ein Feld für den bevorzugten Bestellkanal
+   (online/E-Mail/Telefon) – alle jetzt in `core.partner` abgebildet
+   (siehe `db/phase1_stammdaten_wein_preise.sql`).
+
+**Sicherheitshinweis zu den Zugangsdaten:** Die Excel-Liste enthält für
+einzelne Online-Shops Benutzername/Passwort im Klartext in einer eigenen
+Spalte. Diese Klartext-Werte werden **nicht** in die Datenbank oder ins
+Git-Repository übernommen. Im Modell gibt es dafür bewusst nur ein Flag
+`zugangsdaten_hinterlegt` und einen Verweis `zugangsdaten_verweis` (z. B.
+"Vaultwarden: Fischer Weine Onlineshop") – das eigentliche Passwort gehört
+in einen separaten, dafür gebauten Passwort-Tresor, nicht in die
+Geschäfts-DB und nicht in eine Excel-Datei. Empfehlung: **Vaultwarden**
+(self-hosted, Bitwarden-kompatibel) als zusätzlichen Docker-Dienst auf dem
+gleichen Server ergänzen (siehe Abschnitt 11) und die in der Liste
+sichtbaren Klartext-Passwörter bei Gelegenheit ändern, da sie aktuell
+unverschlüsselt in einer Excel-Datei kursieren.
+
 ### 6.1 Schema-Organisation
 
 Postgres-Schemas trennen Fachbereiche, teilen sich aber Fremdschlüssel auf den
 Kern:
 
-- `core` – Sparten, Produkte, Kategorien, Lieferanten, Preislisten, MwSt
+- `core` – Sparten, Produkte, Kategorien, Partner (Lieferant/Kunde/
+  Dienstleister), Preislisten, MwSt
 - `wein` – Zusatzattribute für Produkte vom Typ `WEIN`
-- `crm` – Adressen, Firmen, Kontakte (Phase 3)
+- `crm` – Kontaktpersonen, Aktivitäten/Historie zu `core.partner` (Phase 3,
+  keine eigene Firmen-/Adresstabelle mehr – das ist bereits `core.partner`)
 - `lager`, `einkauf`, `verkauf`, `rezepte`, `hotel`, `pos` – künftige Module,
-  referenzieren `core.produkte` / `core.sparten` / `crm.adressen`
+  referenzieren `core.produkte` / `core.sparten` / `core.partner`
 
 ### 6.2 Namenskonventionen (verbindlich)
 
@@ -203,7 +248,8 @@ Kern:
 ```mermaid
 erDiagram
     SPARTEN ||--o{ PREISLISTEN : "gilt fuer"
-    LIEFERANTEN ||--o{ PRODUKTE : liefert
+    PARTNER_KATEGORIEN ||--o{ PARTNER : gruppiert
+    PARTNER ||--o{ PRODUKTE : liefert
     PRODUKT_KATEGORIEN ||--o{ PRODUKTE : gruppiert
     PRODUKTE ||--o| WEINE : "Zusatzattribute (Typ=WEIN)"
     PRODUKTE ||--o{ PREISLISTEN_POSITIONEN : "hat Preis in"
@@ -219,7 +265,16 @@ erDiagram
 **`core.mwst_saetze`** – MwSt-Sätze mit Gültigkeitszeitraum (Sätze ändern
 sich mit der Zeit, daher historisiert statt einfacher Prozentwert)
 
-**`core.lieferanten`** – Weinhändler/Produzenten als Lieferant
+**`core.partner_kategorien`** – Kategorien für `core.partner`, direkt aus der
+realen Hoberg-Lieferantenliste übernommen (Weine, Getränke, Lebensmittel,
+Buchhaltung, Kassensystem, Hotel-Plattform, Reinigung/Wäscherei, Dienstleistung).
+
+**`core.partner`** – gemeinsames Register für Lieferanten, Kunden und
+Dienstleister (Rollenflags `ist_kunde`/`ist_lieferant`/`ist_dienstleister`
+statt separater Tabellen, siehe 6.0). Enthält Adresse (Strasse/Nr./PLZ/Ort/
+Land), Ansprechperson, Telefon/Mobil, E-Mail, Webseite, Kundennummer beim
+Partner, Bestellkanal, Online-Shop-URL sowie nur einen **Verweis** auf
+hinterlegte Zugangsdaten (kein Klartext-Passwort in der DB).
 
 **`core.produkt_kategorien`** – hierarchische Kategorien
 (`Getränke > Wein > Rotwein`)
@@ -327,6 +382,7 @@ auf dem eigenen Server** und ohne Bindung an einen einzelnen Anbieter:
 | Automatisierung/PDF | eigener **Node.js-Dienst** (Docker-Container) | übernimmt PDF-Erstellung (wie bisher im Menükarten-Modul), Webhooks, geplante Jobs |
 | Reverse Proxy/TLS | **Nginx** oder **Traefik** + Let's Encrypt | ein Einstiegspunkt für alle Module, automatisches HTTPS-Zertifikat |
 | Dateiablage (Bilder, PDFs) | lokales Docker-Volume, bei Bedarf später **MinIO** (self-hosted, S3-kompatibel) | einfach im Backup mit einzubeziehen, kein externer Objektspeicher nötig |
+| Zugangsdaten/Passwörter (z. B. Online-Shop-Logins der Lieferanten) | **Vaultwarden** (self-hosted, Bitwarden-kompatibel), eigener Container | ersetzt Klartext-Passwörter in Excel/DB (siehe 6.0); `core.partner` verweist nur darauf, enthält das Geheimnis nicht |
 | Deployment | **Docker Compose** auf dem Hosttech-Server | ein `docker-compose.yml` beschreibt den ganzen Stack, reproduzierbar, portierbar auf jeden anderen Server |
 | Backup | siehe Abschnitt 12 | zentral, automatisiert, mit Offsite-Kopie |
 
