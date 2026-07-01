@@ -383,17 +383,25 @@ auf dem eigenen Server** und ohne Bindung an einen einzelnen Anbieter:
 | Reverse Proxy/TLS | **Nginx** oder **Traefik** + Let's Encrypt | ein Einstiegspunkt für alle Module, automatisches HTTPS-Zertifikat |
 | Dateiablage (Bilder, PDFs) | lokales Docker-Volume, bei Bedarf später **MinIO** (self-hosted, S3-kompatibel) | einfach im Backup mit einzubeziehen, kein externer Objektspeicher nötig |
 | Zugangsdaten/Passwörter (z. B. Online-Shop-Logins der Lieferanten) | **Vaultwarden** (self-hosted, Bitwarden-kompatibel), eigener Container | ersetzt Klartext-Passwörter in Excel/DB (siehe 6.0); `core.partner` verweist nur darauf, enthält das Geheimnis nicht |
-| Deployment | **Docker Compose** auf dem Hosttech-Server | ein `docker-compose.yml` beschreibt den ganzen Stack, reproduzierbar, portierbar auf jeden anderen Server |
-| Backup | siehe Abschnitt 12 | zentral, automatisiert, mit Offsite-Kopie |
+| Deployment/Verwaltung | **Coolify** (self-hosted PaaS, Open Source) auf dem Hosttech-Server, orchestriert den Docker-Compose-Stack darunter | Web-Dashboard statt SSH/CLI für Deployments, Zertifikate, Logs, Umgebungsvariablen – deutlich einfachere Handhabung im Alltag, bleibt aber vollständig self-hosted |
+| Backup | Coolifys eingebaute geplante DB-Backups auf **externen S3-kompatiblen Speicher** (z. B. Hetzner Storage Box, Backblaze B2) + Hosttechs Server-Backup als zweite Ebene | siehe Abschnitt 12 – Offsite-Regel wird durch die S3-Konfiguration praktisch automatisch erfüllt, Restore direkt im Dashboard testbar |
+| Monitoring/Alarmierung | **Uptime Kuma** (self-hosted, einfach) oder Coolifys eigenes Monitoring | Ausfälle/Fehlschläge (auch von Backup-Jobs) fallen auf, bevor sie der Kunde merkt |
 
 Das bestehende Bolt.new-Menükarten-Tool lässt sich darauf umstellen, ohne die
 UI verwerfen zu müssen – nur die Datenquelle wechselt von "eigene
 Cloud-Tabelle" zu "eigene PostgreSQL-Instanz über PostgREST".
 
+**Offener Punkt:** Auch mit Coolify bleibt die Basis-Pflege des Servers
+(OS-Sicherheitsupdates, Coolify-Updates, Reaktion auf Monitoring-Alarme) eine
+wiederkehrende Aufgabe, die jemand konkret übernehmen muss – das entscheidet
+massgeblich, wie "einfach" sich der Betrieb für Hoberg tatsächlich anfühlt.
+Muss vor dem Produktivbetrieb geklärt werden (Wartungsvertrag/Retainer,
+internes Team oder anderweitig).
+
 Konkreter nächster Schritt (Programmierung, nach Freigabe dieses Konzepts):
-Server-Grundgerüst (Docker Compose mit Postgres + PostgREST + Nginx + Backup-
-Job) aufsetzen und `db/phase1_stammdaten_wein_preise.sql` als erste Migration
-einspielen.
+Server-Grundgerüst (Coolify auf Hosttech-vServer, darunter Postgres +
+PostgREST + Nginx + Backup-Job) aufsetzen und
+`db/phase1_stammdaten_wein_preise.sql` als erste Migration einspielen.
 
 ## 12. Hosting & Backup-Konzept
 
@@ -402,12 +410,21 @@ einspielen.
 - Linux-Server mit vollem Root-/SSH-Zugriff (empfohlen: **Hosttech
   vServer/Cloud Server**, siehe Empfehlung in Abschnitt 1 – nicht der
   "Managed vServer" ohne Root und nicht klassisches Shared-Hosting), Docker +
-  Docker Compose installiert.
+  Docker Compose installiert, darüber **Coolify** als Verwaltungsebene
+  (siehe Abschnitt 11).
+- **Dimensionierung:** eine Stufe über dem Minimum wählen (Richtwert: 4 vCPU /
+  8 GB RAM / NVMe-SSD), da DB, API, Auth, PDF-Dienst, Reverse Proxy,
+  Vaultwarden und Coolify selbst gleichzeitig laufen – wichtig für "stabil
+  und schnell", damit die Anwendung sich für die Mitarbeitenden nicht zäh
+  anfühlt.
 - Hosttechs standardmässiges tägliches Voll-Backup (7 Tage Aufbewahrung) kann
   als zusätzliche Sicherheitsebene mitgebucht werden, ersetzt aber die
   eigene Offsite-Sicherung in 12.2 nicht.
 - Ausreichend Speicherplatz für Datenbank **und** Backups (Faustregel:
   mindestens das 3–4-fache der erwarteten DB-Grösse einplanen).
+- **Monitoring:** Uptime Kuma (self-hosted) oder Coolifys Monitoring
+  überwacht Erreichbarkeit der Dienste und Backup-Jobs, mit Alarmierung bei
+  Ausfall.
 - Firewall (nur Port 443/80 und SSH offen), SSH nur mit Schlüssel (kein
   Passwort-Login), automatische Sicherheitsupdates des Betriebssystems.
 - Getrennte Umgebungen: mind. **Produktion**, empfohlen zusätzlich eine
@@ -419,15 +436,18 @@ einspielen.
 **3 Kopien, 2 verschiedene Medien/Orte, 1 davon offsite:**
 
 1. **Automatischer täglicher Dump** der gesamten PostgreSQL-Datenbank
-   (`pg_dump` im Custom-Format, komprimiert) per Cron-Job/Cron-Container,
-   inkl. Zeitstempel im Dateinamen.
+   (`pg_dump` im Custom-Format, komprimiert), geplant über Coolifys
+   eingebaute Backup-Funktion (native Dump-Routine je Datenbank, per
+   Cron-Ausdruck konfigurierbar), inkl. Zeitstempel im Dateinamen.
 2. **Dateiablage sichern** (Produktbilder, erzeugte PDFs, Konfigurationen)
    zusammen mit dem DB-Dump in einem Archiv.
-3. **Offsite-Kopie**: automatischer Transfer (rclone/rsync) des Backups auf
-   einen zweiten Ort – z. B. Hosttech-Zusatzprodukt "Backup-Space", einen
-   zweiten Server oder einen externen S3-kompatiblen Speicher. Backups
-   dürfen **nicht ausschliesslich** auf demselben physischen Server liegen
-   wie die Live-Datenbank (sonst kein Schutz bei Hardware-/Serverausfall).
+3. **Offsite-Kopie**: Coolify lädt die Backups direkt auf ein konfiguriertes
+   **externes S3-kompatibles Ziel** hoch (z. B. Hetzner Storage Box,
+   Backblaze B2) – kein zusätzliches rclone/rsync-Skript nötig. Ergänzend
+   Hosttechs Zusatzprodukt "Backup-Space" oder das automatische
+   Server-Backup als zweite, unabhängige Ebene. Backups dürfen
+   **nicht ausschliesslich** auf demselben physischen Server liegen wie die
+   Live-Datenbank (sonst kein Schutz bei Hardware-/Serverausfall).
 4. **Aufbewahrung/Rotation** (Generationsprinzip): z. B. 7 tägliche,
    4 wöchentliche, 12 monatliche Stände – ältere Stände werden automatisch
    gelöscht, damit der Speicher nicht unbegrenzt wächst.
