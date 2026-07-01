@@ -25,13 +25,33 @@ ersetzt, der auf jedem Linux-vServer/Managed-Server mit Root-Zugriff läuft –
 funktional bleibt das Konzept (Stammdaten, Sparten, Preislisten, Module)
 unverändert, nur die Betriebsumgebung ändert sich.
 
-> Annahme für dieses Konzept: Hosttech **vServer oder Managed Server mit
-> Root-/SSH-Zugriff** (Linux, Docker-fähig). Klassisches Shared-Hosting
-> (nur PHP/MySQL über Plesk, kein Root, kein Docker) reicht für PostgreSQL,
-> eigene Hintergrunddienste und automatisierte Backups **nicht** aus – dort
-> müsste der Unterbau grundlegend auf PHP/MariaDB umgebaut werden. Falls das
-> der tatsächlich verfügbare Hosttech-Plan ist, bitte Rückmeldung geben,
-> dann wird dieser Abschnitt angepasst.
+> **Empfehlung für das konkrete Hosttech-Produkt** (Entscheidung noch offen,
+> daher hier begründet vorgeschlagen): ein **Hosttech vServer/Cloud Server
+> mit vollem Root-Zugriff** (nicht der "Managed vServer" ohne Root, und nicht
+> klassisches Shared-Webhosting). Gründe:
+> - Nur mit Root-/SSH-Zugriff lassen sich Docker, PostgreSQL und eigene
+>   Hintergrunddienste (API, Auth, Automatisierung) überhaupt betreiben.
+>   Klassisches Shared-Hosting (PHP/MySQL über Plesk) und der "Managed
+>   vServer" von Hosttech (System wird von Hosttech verwaltet, Root-Zugriff
+>   bewusst deaktiviert) scheiden damit aus.
+> - Hosttech-vServer laufen im eigenen ISO-27001-zertifizierten Rechenzentrum
+>   (DATAROCK) mit voller Betriebssystemwahl (Linux) – passend für einen
+>   Docker-Compose-Stack.
+> - Hosttech erstellt für vServer standardmässig automatisch **tägliche
+>   Voll-Backups mit 7 Tagen Aufbewahrung**, zusätzlicher Backup-Speicher ist
+>   dazubuchbar. Das ist ein sinnvoller **zusätzlicher** Baustein, ersetzt
+>   aber die eigene Offsite-Sicherung aus Abschnitt 12 nicht (liegt sonst auf
+>   derselben Infrastruktur wie die Live-Daten – kein Schutz bei
+>   Anbieterausfall).
+> - Grössenordnung für den Start: ein Einstiegs- bis Mitteltarif (z. B.
+>   2 vCPU / 4–8 GB RAM / 80–160 GB SSD) reicht für Postgres + PostgREST +
+>   Auth-Dienst + Nginx im Betrieb dieser Grösse; genaue Tarife/Namen bitte
+>   aktuell auf hosttech.ch/vserver prüfen, da sich Staffelungen ändern
+>   können.
+>
+> Sollte stattdessen nur klassisches Shared-Hosting verfügbar sein (kein
+> Root, kein Docker), müsste der technische Unterbau grundlegend auf
+> PHP/MariaDB umgebaut werden – bitte in dem Fall Rückmeldung geben.
 
 ## 2. Architekturprinzipien
 
@@ -323,8 +343,13 @@ einspielen.
 
 ### 12.1 Serveranforderungen
 
-- Linux-Server mit Root-/SSH-Zugriff (Hosttech vServer oder Managed Server),
-  Docker + Docker Compose installiert.
+- Linux-Server mit vollem Root-/SSH-Zugriff (empfohlen: **Hosttech
+  vServer/Cloud Server**, siehe Empfehlung in Abschnitt 1 – nicht der
+  "Managed vServer" ohne Root und nicht klassisches Shared-Hosting), Docker +
+  Docker Compose installiert.
+- Hosttechs standardmässiges tägliches Voll-Backup (7 Tage Aufbewahrung) kann
+  als zusätzliche Sicherheitsebene mitgebucht werden, ersetzt aber die
+  eigene Offsite-Sicherung in 12.2 nicht.
 - Ausreichend Speicherplatz für Datenbank **und** Backups (Faustregel:
   mindestens das 3–4-fache der erwarteten DB-Grösse einplanen).
 - Firewall (nur Port 443/80 und SSH offen), SSH nur mit Schlüssel (kein
