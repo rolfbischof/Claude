@@ -43,10 +43,13 @@ unverändert, nur die Betriebsumgebung ändert sich.
 >   aber die eigene Offsite-Sicherung aus Abschnitt 12 nicht (liegt sonst auf
 >   derselben Infrastruktur wie die Live-Daten – kein Schutz bei
 >   Anbieterausfall).
-> - Grössenordnung für den Start: die Hosttech-Cloud-Server-Linie "Foggy"
->   (4 vCPU / 4 GB RAM / 100 GB NVMe-SSD, ab ca. CHF 19.90/Monat) reicht für
->   Postgres + PostgREST + Auth-Dienst + Nginx + Coolify im Betrieb dieser
->   Grösse. Lässt sich jederzeit ohne Datenmigration auf die nächste Stufe
+> - **Bestellt** (siehe 12.4): 6 vCPU / 8 GB RAM / 200 GB NVMe-SSD, Aggressive
+>   Powermode, Ubuntu 24.04 LTS minimal, kein System Management (voller
+>   Root-Zugriff erhalten), 100 GB Backupspeicher, Serverstandort Schweiz,
+>   12 Monate Laufzeit, CHF 54.80/Monat. Grösser als die ursprünglich
+>   skizzierte Startgrösse ("Foggy", 4 vCPU/4 GB/100 GB) – zusätzliche
+>   Reserve für Postgres + PostgREST + Auth-Dienst + Nginx + Coolify im
+>   Parallelbetrieb. Lässt sich jederzeit ohne Datenmigration weiter
 >   hochstufen (Details Abschnitt 12.1) – genaue Tarife/Namen bitte aktuell
 >   im [Serverkonfigurator](https://www.hosttech.ch/serverkonfigurator/)
 >   prüfen, da sich Staffelungen ändern können.
@@ -524,24 +527,42 @@ vollständige `pg_dump`-Stände sind, ist ein Wechsel des Hosting-Anbieters
 (z. B. weg von oder zu Hosttech) jederzeit möglich: Server neu aufsetzen,
 Docker Compose starten, letzten Backup-Stand einspielen.
 
-### 12.4 Bestell-Checkliste (Hosttech vServer "Foggy")
+### 12.4 Bestellte Konfiguration (Hosttech vServer)
 
-Konkrete Auswahl für die Bestellung im myhosttech-Kundencenter (Angaben
-prüfen, da sich Preise/Bezeichnungen ändern können):
+Tatsächlich bestellt (Kundennummer 101130), 12 Monate Laufzeit:
 
-| Feld | Auswahl |
+| Feld | Bestellt |
 |---|---|
-| Produkt | vServer **"Foggy"** – **nicht** "Managed vServer/Managed Cloud Server Foggy" (root-lose Variante, für unseren Stack ungeeignet, siehe 12.1) |
-| Rechenzentrum | Schweiz (DATAROCK), Standard bei hosttech.ch |
-| Ressourcen | 4 vCPU / 4 GB RAM / 100 GB NVMe-SSD, Traffic unlimitiert – Startgrösse, ab CHF 19.90/Monat, jederzeit ohne Migration hochstufbar |
-| Betriebssystem/Version | **Ubuntu 24.04 LTS "minimal"** (nicht "LAMP", nicht Plesk) – alternativ Debian 12/13 minimal. "Minimal" ohne LAMP/Plesk, da Docker + Coolify unseren Reverse Proxy/Webstack übernehmen; ein zusätzliches Kontrollpanel (Plesk) oder vorinstalliertes Apache/MySQL (LAMP) würde mit Port 80/443 kollidieren und unnötige Angriffsfläche schaffen |
-| Zugriffsart | Voller **Root-Zugriff** (bei "Foggy" Standard) |
-| Installation | Neuinstallation (vorinstalliert geliefert) |
-| IPv4/IPv6 | 1 IPv4 inklusive (reicht für einen zentralen Reverse Proxy) + IPv6 /64 automatisch dabei |
-| I/O-Modus | Start mit "Dynamic" (Standard), bei Bedarf später im Kundencenter auf "Aggressive" umstellen (~4× mehr SSD-Durchsatz) |
-| Vertragslaufzeit | Monatlich kündbar, falls als Option angeboten – Setup-Gebühr ist gratis |
-| Zusatzprodukt (optional, auch nachträglich zubuchbar) | "Backup & Protect", 35 GB, ca. CHF 4.90/Monat, für die Offsite-Backup-Kopie |
-| Domain | Kein neuer Domainkauf nötig – eine bereits bei Hosttech verwaltete Subdomain reicht. Nach Lieferung im Hosttech-DNS-Editor A-Record (und AAAA für IPv6) dieser Subdomain auf die neue Server-IP zeigen lassen. Mehrere Subdomains derselben Domain für verschiedene Module (App, öffentliche Menükarte, …) sind problemlos möglich, Coolify stellt pro Subdomain automatisch ein eigenes TLS-Zertifikat aus |
+| Speicherplatz | 200 GB NVMe-SSD |
+| RAM | 8 GB |
+| Prozessorkerne | 6 |
+| Powermode | Aggressive Mode (+CHF 5.00/Monat) |
+| Traffic | unlimitiert |
+| IPv4/IPv6 | 1 IPv4-Adresse + 1 IPv6-Subnetz (/64) |
+| Betriebssystem/Version | **Ubuntu 24.04 LTS minimal** (kein LAMP, kein Plesk) |
+| Backupspeicherplatz | 100 GB (+CHF 9.90/Monat) – Hosttech-seitige zusätzliche Sicherungsebene |
+| Anzahl Domains DNS | 50 verwaltbar |
+| System Management | kein System Management → **voller Root-Zugriff bleibt erhalten** (Voraussetzung für unseren Docker/Coolify-Stack) |
+| Support | Basis Support |
+| Serverstandort | Schweiz |
+| Vertragslaufzeit/Zahlung | alle 12 Monate |
+| **Total** | **CHF 54.80/Monat** + einmalig CHF 12.95 Aufschaltgebühr |
+
+Grösser dimensioniert als die ursprünglich skizzierte Startgrösse (4 vCPU/
+4 GB/100 GB) – gibt zusätzliche Reserve für Postgres, PostgREST, Auth,
+PDF-Dienst, Nginx, Vaultwarden, Coolify und Uptime Kuma im Parallelbetrieb.
+Skalierung nach oben bleibt trotzdem jederzeit im Kundencenter möglich
+(Abschnitt 12.1).
+
+**Nach Lieferung:** Domain/DNS einrichten – kein neuer Domainkauf nötig,
+eine bereits bei Hosttech verwaltete Subdomain reicht. Im Hosttech-DNS-Editor
+A-Record (und AAAA für IPv6) dieser Subdomain auf die neue Server-IP zeigen
+lassen. Mehrere Subdomains derselben Domain für verschiedene Module (App,
+öffentliche Menükarte, …) sind problemlos möglich, Coolify stellt pro
+Subdomain automatisch ein eigenes TLS-Zertifikat aus. Danach SSH-Key statt
+Passwort einrichten, Passwort-Login deaktivieren, Firewall (nur 22/80/443),
+automatische Sicherheitsupdates aktivieren, dann Docker + Coolify
+installieren.
 
 **Direkt nach Lieferung** (erster Schritt, keine Bestelloption): SSH-Key
 statt Passwort einrichten und Passwort-Login deaktivieren, Firewall (nur
